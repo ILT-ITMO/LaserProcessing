@@ -4,7 +4,7 @@ from PIL import Image
 import os
 
 class Segmentation():
-    def segmentation(img, black_lavel, type='dark'):
+    def segmentation(img, black_lavel, type_='dark'):
 
         """
         Накладывает маску на полученное изображения, используя его контрастность. Готовит файл
@@ -17,7 +17,7 @@ class Segmentation():
         black_lavel : уровень черного, по которому будет производиться сегментация. 
                       Число от 0 до 255, где 0 - полностью черное, 255 - полностью белое : int
         
-        type: тип сегментации, dark - выделение темных объектов. != dark - выделение светлых: str 
+        type_: тип сегментации, dark - выделение темных объектов. != dark - выделение светлых: str 
             
         Результат
         -------
@@ -39,12 +39,35 @@ class Segmentation():
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         # Бинаризация
-        if type == 'dark':
+        if type_ == 'dark':
             _, thresh = cv2.threshold(
                 gray, black_lavel, 255, cv2.THRESH_BINARY_INV)
         else:
             _, thresh = cv2.threshold(
                 gray, black_lavel, 255, cv2.THRESH_BINARY)
+
+
+        def other_segment(thresh):
+            thresh_test = thresh.T
+            width_result  = []
+            width_count = 0
+            for i in range(thresh_test.shape[0]):
+                width_iter = []
+                for j in range(thresh_test.shape[1]):
+                    if thresh_test[i][j] != 0:
+                        width_count += 1
+                    else:
+                        if width_count != 0:
+                            width_iter.append(width_count)
+                            width_count = 0
+                width_iter.append(width_count)
+                width_result.append(max(width_iter))
+
+            #print(f'СПИСОК {width_result}')    
+            return sum(width_result) / len(width_result) * 0.53836990
+
+        other_width = other_segment(thresh)
+        #print(f' TEST OTVET {other_segment(thresh) * 0.53836990} micrometetrs')
 
         sup = Image.fromarray(thresh)
         sup.save('sup_image.jpg')
@@ -81,13 +104,78 @@ class Segmentation():
             return brightest_object
 
         # Нахождение крайних точек самого темного объекта
-        if type == 'dark':
+        if type_ == 'dark':
             # print('USE DARK TYPE')
             segment_object = darkest_object_func(contours)
         else:
             # print('USE BRIGHT TYPE')
             segment_object = brightest_object_func(contours)
 
+
+        def other_segment_3(arr):
+            try:
+                arr_reshaped = arr.reshape(-1, 2)
+
+                # 2. Сортируем по X (первая колонка)
+                sorted_indices = np.argsort(arr_reshaped[:, 0])
+                sorted_arr_reshaped = arr_reshaped[sorted_indices]
+
+                # 3. Возвращаем исходную форму (опционально)
+                sorted_arr = sorted_arr_reshaped.reshape(-1, 1, 2)
+
+                '''
+                for elem in sorted_arr:
+                    print('elem',elem[0][0])
+                '''
+                prev_elem = sorted_arr[0][0]
+                sup_list = []
+                result_list = []
+                for elem in sorted_arr:
+                    if elem[0][0] == prev_elem[0]:
+                        sup_list.append(elem[0])        
+                        prev_elem = elem[0]
+                    else:
+                        # prev_elem_ = sup_list[0]
+                        max_width = float('-inf')
+                        for i, elem_1 in enumerate(sup_list, 1):
+                            for elem_2 in sup_list[i:]:
+                                if abs(elem_1[1] - elem_2[1]) > max_width:
+                                    max_width = abs(elem_1[1] - elem_2[1])
+            
+                            # if abs(elem_[1] - prev_elem_[1]) > max_width:
+                            #     max_width = abs(elem_[1] - prev_elem_[1])
+                            # prev_elem_ = elem_    
+                        result_list.append(max_width)
+                        max_width = float('inf')
+                        sup_list = []
+                        sup_list.append(elem[0])        
+                        prev_elem = elem[0]
+
+                result_list = list(filter(lambda elem: elem > 60, result_list))
+                result_array = np.array(result_list)
+
+                try:
+                    result_1 = sum(result_list)/len(result_list) * 0.53836990
+                    result_2 = np.std(result_array) * 0.53836990
+                    return(result_1, result_2)
+                except:
+                    return (0, 0)
+            except:
+                return (0, 0)    
+
+        # Результатом при разметке фотографии '4_image_0_1600.jpeg' параметрами 
+        #~~~ Segmentation.segmentation(test_img, Segmentation.calculate_percentile_brightness(test_img, 30)) ~~~ 
+        # являлся список длины 514, из которого 272 значения != 0, при количестве уникальных X = 515 и общем количестве точек в контуре = 950
+        # При повышении нижнего барьера фильтрации в диапазоне > [20:60] длина итогового массива не изменяется, значит в этой облатси значений нет, 
+        # учитывая, что 60 px эквивалентно значению +- в 25 мкм, что меньше диаметра лазерного отпечатка на используемой конфигурации лазерного комплекса, 
+        # предлагаю оставить layer_width = 60 px, как пороговое значения для отсечения с нижней стороны  
+
+        #other_segment_3(contours)
+        # print(len(np.unique(segment_object[:, :, 0])))
+        # print(len(segment_object[:, :, 0]))
+        avg_width = other_segment_3(segment_object)
+
+              
         if segment_object is not None:
             leftmost = tuple(
                 segment_object[segment_object[:, :, 0].argmin()][0])
@@ -102,8 +190,8 @@ class Segmentation():
             width = np.round(0.53836990 * (bottommost[1] - topmost[1]), 5)
 
         else:
-            print(f"Самый {type} объект не найден.")
-            return (0, 0)
+            print(f"Самый {type_} объект не найден.")
+            return (0, 0, 0, 0)
 
         # Рисуем контур самого темного объекта
         if segment_object is not None:
@@ -114,6 +202,11 @@ class Segmentation():
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             cv2.putText(image, f'Lenght: {lenght} micrometers', (20, 60),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(image, f'avg width: {avg_width[0]} micrometers', (20, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(image, f'standart deviation : {avg_width[1]} micrometers', (20, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            
 
         # Преобразуем изображение из BGR в RGB
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -129,13 +222,17 @@ class Segmentation():
                 blob_data = file.read()
             return blob_data
 
-        return (width, image_pil)
+        return (width, image_pil, avg_width[0], avg_width[1])
 
-    def calculate_percentile_brightness(image_path, procentage: int, type='dark'):
+    def calculate_percentile_brightness(image_path, procentage: int, type_='dark'):
         # Открываем изображение и конвертируем в черно-белое
-        image = Image.open(image_path).convert('L')
-        pixels = np.array(image)
-        if type != 'dark':
+        try:
+            image = Image.open(image_path).convert('L')
+            pixels = np.array(image)
+        except:
+            pixels = np.array(image_path)
+
+        if type_ != 'dark':
             procentage = abs(100-procentage)
         percentile = np.percentile(pixels, procentage)
 
@@ -157,4 +254,5 @@ class Segmentation():
         # Обрезаем изображение
         cropped_img = img.crop((left, top, right, bottom))
         # image_pil = Image.fromarray(cropped_img)
-        return np.array(cropped_img)    
+        return np.array(cropped_img)
+
