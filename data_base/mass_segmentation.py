@@ -1,49 +1,3 @@
-# import os
-# from segmentation_1 import Segmentation
-# from PIL import Image
-# import pandas as pd
-
-# # сортировка папки по номеру снимка
-# path = "sample_imgs4"
-# def sorting_folder(path):
-#     filenames = os.listdir(path)
-#     filenames.sort(key=lambda file: file.split('_')[0])
-#     filenames = filenames[1:]
-#     filenames.sort(key=lambda file: int(file.split('_')[0]))
-#     return filenames
-# #print(os.path.abspath("sample_imgs4"))
-
-
-# def segmentation_for_folder(folder):
-#     result_list, sup_list  = [], []
-#     path = folder
-#     filenames = sorting_folder(path)
-#     for index, file in enumerate(filenames):
-#         img_path = os.path.join(os.path.abspath(folder), file)
-#         width, img_to_save = Segmentation.segmentation(Segmentation.crop_center_square(img_path), Segmentation.calculate_percentile_brightness(img_path, 30))
-#         img_to_save.save(f'/Users/bogdansamysev/Desktop/project/sample_imgs4_segment/{file}')
-#         if index % 4 == 0:
-#             result_list.append(sup_list)
-#             sup_list = []
-#         sup_list.append(width)
-        
-#         #логгироывние
-#         print(f'{index} из {len(filenames)} фото размечено')
-
-#     return result_list
-
-# result = segmentation_for_folder(path)
-# df = pd.DataFrame(result, columns=["width_0", "width_1", "width_2", "width_3"])
-# df.to_csv("segmen_result_1", index=True)
-
-
-
-
-
-
-
-
-
 import os
 from segmentation import Segmentation
 from PIL import Image
@@ -94,7 +48,6 @@ def segmentation_for_folder(folder):
             sup_list.append(prev_width)
             avg_sup_list.append(prev_avg_width)
             std_div_sup_list.append(prev_std_div)
-
 
         #логгироывние
         print(f'{index} из {len(filenames)} фото размечено')
