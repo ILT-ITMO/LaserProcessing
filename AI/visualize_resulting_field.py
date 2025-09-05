@@ -7,41 +7,50 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-# ---------- параметры файла и нормировок ----------
 NPZ_PATH = "U_series.npz"
 
+# === НОВОЕ: грузим общие параметры из JSON, если есть ===
+import json, os
+from pathlib import Path
+
+PARAMS_JSON = "pinn_params.json"
+cfg = {}
+if Path(PARAMS_JSON).exists():
+    cfg = json.loads(Path(PARAMS_JSON).read_text())
+else:
+    print(f"[warn] {PARAMS_JSON} не найден. Использую значения по умолчанию.")
+
 # Геометрия (м)
-W_m = 152.4e-6
-H_m = 21.9e-6
-R_m = W_m / 2.0
-w0_m = 2.0e-6
+W_m  = cfg.get("W_m", 152.4e-6)
+H_m  = cfg.get("H_m", 21.9e-6)
+R_m  = cfg.get("R_m", W_m/2.0)
+w0_m = cfg.get("w0_m", 2.0e-6)
 
 # Материал
-rho_m = 2200.0       # кг/м^3 (кварц)
-cp_JkgK = 703.0      # Дж/(кг·К)
+rho_m     = cfg.get("rho_m", 2200.0)    # кг/м^3
+cp_JkgK   = cfg.get("cp_JkgK", 703.0)   # Дж/(кг·К)
 
 # Время нормировки
-Twindow_s = 50e-3    # сек
+Twindow_s = cfg.get("Twindow_s", 50e-3) # сек
 
 # Оптика / мощность
-P_W = 1.1           # Вт
-mu_star = 100.0
-mu_inv_m = mu_star / H_m   # 1/м
+P_W     = cfg.get("P_W", 0.1)           # Вт
+mu_star = cfg.get("mu_star", 100.0)     # безразм. (на H)
+mu_inv_m = mu_star / H_m                # 1/м
+
+# Базовая температура и изотерма
+T0_C        = cfg.get("T0_C", 25.0)
+ISO_TEMP_C  = cfg.get("ISO_TEMP_C", T0_C + 10.0)
 
 # Перевод безразмерной U -> Кельвины: ΔT_scale_K(P)
+import math
 DELTA_T_SCALE_K = (Twindow_s * (2.0 * P_W * mu_inv_m)) / (math.pi * w0_m**2 * rho_m * cp_JkgK)
-
-# Базовая температура
-T0_C = 25.0
 
 # Если в NPZ нет 't_sec', запасной Twindow:
 Twindow_fallback_s = Twindow_s
 
 # Ограничение числа панелей (опционально)
 MAX_PANELS = 8
-
-# === Новый параметр: температура изотермы (°C) ===
-ISO_TEMP_C = 7.6e7
 
 
 def main():
