@@ -40,7 +40,8 @@ mu_inv_m = mu_star / H_m                # 1/м
 
 # Базовая температура и изотерма
 T0_C        = cfg.get("T0_C", 25.0)
-ISO_TEMP_C  = cfg.get("ISO_TEMP_C", T0_C + 10.0)
+# ISO_TEMP_C  = cfg.get("ISO_TEMP_C", T0_C + 10.0)
+ISO_TEMP_C  = 80.0
 
 # Перевод безразмерной U -> Кельвины: ΔT_scale_K(P)
 import math
