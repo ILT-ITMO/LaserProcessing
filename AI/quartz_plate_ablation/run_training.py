@@ -22,7 +22,7 @@ from physics import compute_losses
 from source import build_optical_source, load_cfg_and_extras
 
 # ---------- User-config block (edit here as needed) ----------
-PRESET_PATH = Path("presets_params/pinn_params_P13p6W_V40mms_20250910_143220.json")   # <- set your preset file
+PRESET_PATH = Path("presets_params/pinn_params_P3p3W_V40mms_20250911_164958.json")   # <- set your preset file
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SEED = 42
 

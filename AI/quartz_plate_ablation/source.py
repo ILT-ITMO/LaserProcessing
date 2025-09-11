@@ -12,18 +12,22 @@
 
 Где q_W_m3 — объёмная мощность поглощения Гауссова пучка
 с экспоненциальным затуханием по глубине (Beer–Lambert):
-  q = μ_a * I_surf(r) * exp(-μ_a z),  μ_a = mu_star / H_m
-  I_surf(r) = (2 P / (π w0^2)) * exp(-2 r^2 / w0^2)
+  q(r,z,t) = μ_a * I_surf(r,t) * exp(-μ_a z),  μ_a = mu_star / H_m
+  I_surf(r,t) = (2 P(t) / (π w0^2)) * exp(-2 r^2 / w0^2)
 
-Временной профиль в этой минимальной версии: g(τ)=1 на [0,1].
+Временной профиль — гребёнка гауссовых импульсов:
+  P(t) = P_peak * Σ_k exp(-4 ln 2 * (t - t_k)^2 / FWHM^2),   t_k = t0 + k/f_rep
+Если задана только средняя мощность P_avg, то:
+  P_peak = P_avg / (f_rep * FWHM * sqrt(π / (4 ln 2))).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 
 import json
+import math
 import torch
 import torch.nn as nn
 
@@ -36,7 +40,7 @@ from pinn_io import load_params_json     # загрузка строго в Conf
 def load_cfg_and_extras(json_path: Path) -> Tuple[Config, Dict[str, Any]]:
     """
     Загружает Config и возвращает dict со ВСЕМИ полями JSON.
-    Нужно, чтобы вытащить доп. поля (например, SCAN_SPEED_MM_S, DELTA_T_SCALE_K),
+    Нужно, чтобы вытащить доп. поля (например, SCAN_SPEED_MM_S, DELTA_T_SCALE_K, пульс-параметры),
     которые не входят в Config.
     """
     json_path = Path(json_path)
@@ -72,35 +76,115 @@ def require_deltaT_scale_from_json(data: Dict[str, Any]) -> float:
 
 @dataclass
 class SourcePhys:
-    P_W: float        # мощность, Вт
-    w0_m: float       # радиус пучка по e^-2, м
-    R_m: float        # радиус области, м
-    H_m: float        # высота области, м
-    Twindow_s: float  # временное окно, с
-    mu_star: float    # H/δ  => δ = H/mu_star
-    rho_kg_m3: float  # плотность, кг/м^3
-    cp_J_kgK: float   # теплоёмкость, Дж/(кг·К)
-    deltaT_scale_K: float  # масштаб ΔT для безразмерной температуры
-    scan_speed_mm_s: Optional[float] = None  # на будущее (для бегущего пятна)
+    # Геометрия/материал/нормировки
+    w0_m: float
+    R_m: float
+    H_m: float
+    Twindow_s: float
+    mu_star: float
+    rho_kg_m3: float
+    cp_J_kgK: float
+    deltaT_scale_K: float
+    # Временные параметры
+    pulse_fwhm_s: Optional[float] = None
+    rep_rate_Hz: Optional[float] = None
+    pulse_count: Optional[int] = None
+    pulses_t0_s: float = 0.0
+    P_peak_W: Optional[float] = None       # Пиковая мощность одного импульса
+    P_avg_W: Optional[float] = None        # Средняя мощность (если задана)
+    # Прочее
+    scan_speed_mm_s: Optional[float] = None
 
     @property
     def mu_abs_m_inv(self) -> float:
         # μ_a = mu_star / H
         return float(self.mu_star / self.H_m)
 
+    @property
+    def gaussian_area_coeff(self) -> float:
+        # ∫ exp(-4 ln2 * t^2 / FWHM^2) dt = FWHM * sqrt(pi/(4 ln 2))
+        if self.pulse_fwhm_s is None:
+            return 1.0
+        return self.pulse_fwhm_s * math.sqrt(math.pi / (4.0 * math.log(2.0)))
+
 
 # ---------- Источник ----------
 
 class OpticalSource(nn.Module):
     """
-    S(ρ, ζ, τ) — безразмерный источник для уравнения на U(ρ, ζ, τ).
+    S(ρ, ζ, τ) — безразмерный источник для уравнения на U(ρ, ζ, τ)
+    c временной огибающей как гребёнка гауссовых импульсов.
     """
     def __init__(self, params: SourcePhys, device: Optional[str] = None):
         super().__init__()
         self.p = params
+        # предрасчёт временных центров импульсов (в секундах)
+        self._pulse_centers_s: List[float] = self._compute_pulse_centers()
         self.register_buffer("one", torch.tensor(1.0))
         if device is not None:
             self.to(device)
+
+        # Если указана только средняя мощность — переведём в пиковую
+        if self.p.P_peak_W is None:
+            self._infer_peak_power_from_average()
+
+    # --------- служебные расчёты времени/мощности ----------
+
+    def _compute_pulse_centers(self) -> List[float]:
+        p = self.p
+        t0 = float(p.pulses_t0_s or 0.0)
+        Tw = float(p.Twindow_s)
+
+        # Приоритет: заданный pulse_count; иначе из rep_rate*window; иначе одиночный
+        if p.rep_rate_Hz and p.rep_rate_Hz > 0.0:
+            if p.pulse_count is None:
+                count = int(max(0, math.floor(p.rep_rate_Hz * Tw)))
+            else:
+                count = int(max(0, p.pulse_count))
+            centers = [t0 + k / p.rep_rate_Hz for k in range(count)]
+        else:
+            # без частоты: одиночный импульс, центр в середине окна
+            centers = [t0 if (0.0 <= t0 <= Tw) else 0.5 * Tw]
+
+        # Оставим только те, что попадают в окно
+        return [t for t in centers if (0.0 <= t <= Tw)]
+
+    def _infer_peak_power_from_average(self) -> None:
+        """
+        Если P_peak_W не задана, но есть средняя мощность (P_avg_W или P_W из cfg),
+        и заданы rep_rate_Hz и pulse_fwhm_s, то восстановим пиковую мощность.
+        """
+        p = self.p
+        if p.P_peak_W is not None:
+            return
+        if (p.P_avg_W is None) or (p.pulse_fwhm_s is None) or (p.rep_rate_Hz is None) or (p.rep_rate_Hz <= 0.0):
+            return
+        area = p.gaussian_area_coeff  # FWHM*sqrt(pi/(4 ln2))
+        if area <= 0.0:
+            return
+        # P_avg = P_peak * area * f_rep  =>  P_peak = P_avg / (area * f_rep)
+        P_peak = float(p.P_avg_W) / (area * float(p.rep_rate_Hz))
+        self.p.P_peak_W = max(P_peak, 0.0)
+
+    # --------- временная огибающая (торч) ----------
+
+    def temporal_envelope(self, tau: torch.Tensor) -> torch.Tensor:
+        """
+        Возвращает Σ_k exp(-4 ln2 * (t - t_k)^2 / FWHM^2) в момент времени t = tau*Twindow.
+        Если FWHM или центры не определены — возвращает единицу (CW).
+        """
+        if (self.p.pulse_fwhm_s is None) or (len(self._pulse_centers_s) == 0):
+            return torch.ones_like(tau)
+
+        t = tau * self.p.Twindow_s  # сек
+        fwhm = float(self.p.pulse_fwhm_s)
+        c = -4.0 * math.log(2.0) / (fwhm * fwhm)
+
+        # Сумма гауссов по центрам. Для численной устойчивости — складываем в торче.
+        env = torch.zeros_like(tau)
+        for tk in self._pulse_centers_s:
+            env = env + torch.exp(c * (t - tk) ** 2)
+        return env
 
     @property
     def deltaT_scale_K(self) -> float:
@@ -110,17 +194,30 @@ class OpticalSource(nn.Module):
     # --- физический q(r,z,t) в Вт/м^3 ---
     def q_W_m3(self, rho: torch.Tensor, zeta: torch.Tensor, tau: torch.Tensor) -> torch.Tensor:
         """
-        q = μ_a * I_surf(r) * exp(-μ_a * z). Временной профиль top-hat: g(τ) = 1 на [0,1].
+        q = μ_a * I_surf(r,t) * exp(-μ_a * z),
+        I_surf(r,t) = (2 P(t) / (π w0^2)) * exp(-2 r^2 / w0^2)
         """
         r = rho * self.p.R_m   # м
         z = zeta * self.p.H_m  # м
 
-        # I(r) = 2P/(π w0^2) * exp(-2 r^2 / w0^2)
-        I0 = 2.0 * self.p.P_W / (torch.pi * (self.p.w0_m ** 2))
-        I_r = I0 * torch.exp(-2.0 * (r ** 2) / (self.p.w0_m ** 2))
+        # Вычислим мгновенную мощность P(t)
+        env = self.temporal_envelope(tau)  # сумма гауссов без масштаба
+        # Масштаб мощности: используем пиковую мощность; если её нет — fallback к P_avg или 0.
+        if self.p.P_peak_W is not None:
+            P_t = float(self.p.P_peak_W) * env
+        elif self.p.P_avg_W is not None:
+            # если нет rep_rate/FWHM, env≈1 => трактуем как CW со средней мощностью
+            P_t = float(self.p.P_avg_W) * env
+        else:
+            # финальный запасной вариант — CW с cfg.P_W (может быть 0)
+            P_t = float(getattr(self.p, "P_avg_W", 0.0)) * env  # обычно недостижимо
+
+        # I(r,t) = 2P(t)/(π w0^2) * exp(-2 r^2 / w0^2)
+        I0 = 2.0 / (math.pi * (self.p.w0_m ** 2))
+        I_r_t = I0 * P_t * torch.exp(-2.0 * (r ** 2) / (self.p.w0_m ** 2))
 
         mu_a = self.p.mu_abs_m_inv
-        q = mu_a * I_r * torch.exp(-mu_a * z)
+        q = mu_a * I_r_t * torch.exp(-mu_a * z)
         return q  # Вт/м^3
 
     # --- безразмерный S(ρ,ζ,τ) ---
@@ -144,6 +241,10 @@ def build_optical_source(
     """
     Создаёт объект источника, используя пресетный JSON.
     Читает DELTA_T_SCALE_K, рассчитанный ранее в create_preset_param.py.
+    Параметры импульсной последовательности берутся из:
+      - Config: pulse_duration_s (FWHM), rep_rate_Hz
+      - Extras(JSON): PULSE_FWHM_S, PULSE_REP_HZ, PULSE_COUNT, PULSES_T0_S,
+                      PULSE_PEAK_W, P_AVG_W
     При необходимости можно явно переопределить deltaT_scale_override.
     """
     cfg, data = load_cfg_and_extras(Path(params_json_path))
@@ -155,9 +256,24 @@ def build_optical_source(
     else:
         deltaT_scale = require_deltaT_scale_from_json(data)
 
+    # Прочтём временные параметры с приоритетом: extras -> cfg
+    pulse_fwhm_s = data.get("PULSE_FWHM_S", getattr(cfg, "pulse_duration_s", None))
+    rep_rate_Hz = data.get("PULSE_REP_HZ", getattr(cfg, "rep_rate_Hz", None))
+    pulse_count = data.get("PULSE_COUNT", None)
+    pulses_t0_s = float(data.get("PULSES_T0_S", 0.0))
+
+    # Мощность: приоритет peak -> avg -> cfg.P_avg_W -> cfg.P_W
+    P_peak_W = data.get("PULSE_PEAK_W", None)
+    P_avg_W = data.get("P_AVG_W", None)
+    if P_avg_W is None:
+        P_avg_W = getattr(cfg, "P_avg_W", None)
+    if P_avg_W is None:
+        # исторически P_W использовалась как средняя; оставим как запасной вариант
+        P_avg_W = getattr(cfg, "P_W", None)
+
     src = OpticalSource(
         SourcePhys(
-            P_W=cfg.P_W,
+            # Геометрия/материал/нормировки
             w0_m=cfg.w0_m,
             R_m=cfg.R_m,
             H_m=cfg.H_m,
@@ -166,6 +282,14 @@ def build_optical_source(
             rho_kg_m3=cfg.rho_kg_m3,
             cp_J_kgK=cfg.cp_J_kgK,
             deltaT_scale_K=deltaT_scale,
+            # Временные параметры
+            pulse_fwhm_s=float(pulse_fwhm_s) if pulse_fwhm_s is not None else None,
+            rep_rate_Hz=float(rep_rate_Hz) if rep_rate_Hz is not None else None,
+            pulse_count=int(pulse_count) if pulse_count is not None else None,
+            pulses_t0_s=float(pulses_t0_s),
+            P_peak_W=float(P_peak_W) if P_peak_W is not None else None,
+            P_avg_W=float(P_avg_W) if P_avg_W is not None else None,
+            # Прочее
             scan_speed_mm_s=data.get("SCAN_SPEED_MM_S", None),
         ),
         device=device or getattr(cfg, "device", None),
@@ -324,10 +448,78 @@ def plot_source_2d_physical(
         plt.show()
     plt.close(fig)
 
+def plot_temporal_envelope(
+    source: OpticalSource,
+    *,
+    Nt: int = 2000,
+    normalize: bool = True,
+    t_unit: str = "us",         # "s" | "ms" | "us" | "ns"
+    show: bool = True,
+    savepath: Optional[str | Path] = None,
+    title: Optional[str] = None,
+):
+    """
+    Рисует временную огибающую мощности P(t) для заданного источника.
+    Если normalize=True — график строится в долях от пика (максимум = 1).
+    Иначе — в ваттах, если известна P_peak_W или P_avg_W.
+
+    Параметры:
+      Nt       — число точек по времени в окне [0, Twindow_s]
+      t_unit   — единицы времени для оси: 's'|'ms'|'us'|'ns'
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    unit_scale = {"s": 1.0, "ms": 1e3, "us": 1e6, "ns": 1e9}
+    if t_unit not in unit_scale:
+        raise ValueError("t_unit must be one of: 's', 'ms', 'us', 'ns'")
+
+    Tw = float(source.p.Twindow_s)
+    t = np.linspace(0.0, Tw, int(Nt))
+    tau = torch.from_numpy(t / Tw).float()
+
+    with torch.no_grad():
+        env = source.temporal_envelope(tau).cpu().numpy()
+
+    # Масштабируем к реальной мощности, если есть данные
+    if source.p.P_peak_W is not None:
+        P = env * float(source.p.P_peak_W)
+        ylabel = "P(t), W"
+    elif source.p.P_avg_W is not None:
+        # Если нет rep_rate/FWHM, env≈1 и график будет просто константой P_avg
+        P = env * float(source.p.P_avg_W)
+        ylabel = "P(t), W"
+    else:
+        # Нет информации о ваттах — показываем безразмерную огибающую
+        P = env
+        ylabel = "Envelope (arb.)"
+
+    if normalize:
+        m = np.max(P)
+        if m > 0:
+            P = P / m
+        ylabel = "P(t) / max"
+
+    t_plot = t * unit_scale[t_unit]
+
+    plt.figure(figsize=(6.4, 3.2), dpi=120)
+    plt.plot(t_plot, P)
+    plt.xlabel(f"t, {t_unit}")
+    plt.ylabel(ylabel)
+    plt.title(title or "Временная огибающая импульсов")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    if savepath is not None:
+        plt.savefig(savepath, bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close()
+
+
 
 if __name__ == "__main__":
     # Пример самопроверки: замените путь на актуальный ваш JSON
-    PARAMS_JSON = Path("presets_params/pinn_params_P3p3W_V60mms_20250908_172037.json")
+    PARAMS_JSON = Path("presets_params/pinn_params_P3p3W_V40mms_20250911_164958.json")
     source = build_optical_source(PARAMS_JSON)
 
     # Пример: наложим коллокационные точки
@@ -339,3 +531,14 @@ if __name__ == "__main__":
         overlay_points=(rho_pts, zeta_pts),
         savepath=None,  # например: "source_map.png"
     )
+
+    # Проверка: огибающая во времени (в микросекундах), нормированная
+    plot_temporal_envelope(
+        source,
+        Nt=4000,
+        normalize=True,
+        t_unit="us",
+        show=True,
+        savepath=None,  # например: "temporal_envelope.png"
+    )
+

@@ -12,20 +12,21 @@ from config import Config
 from source import load_cfg_and_extras, build_optical_source
 
 # ======== CONFIG ========
-PRESET_PATH = Path("./presets_params/pinn_params_P13p6W_V40mms_20250910_143220.json")
+PRESET_PATH = Path("./presets_params/pinn_params_P3p3W_V40mms_20250911_164958.json")
 CKPT_PATH   = Path("checkpoints/best.pt")
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 SEED        = 123
 
 NR, NZ = 256, 256               # сетка по ρ и ζ
-TAU_LIST = [0.0, 0.1, 0.15, 0.25, 0.30, 0.40, 0.50, 0.75, 1.0]   # моменты времени (τ in [0,1])
+TAU_LIST = [0.0, 0.1, 0.15, 0.20, 0.25, 0.3, 0.6]
+# TAU_LIST = [0.95, 0.96, 0.97, 0.98,0.99, 1.0]   # моменты времени (τ in [0,1])
 
 CMAP = "inferno"
 VMIN, VMAX = None, None         # лимиты цветовой шкалы по T(°C); None = авто-глобальные
 
 ISO_TEMP_C: Optional[float] = None        # сплошная красная изотерма
 ISO_DASH_TEMP_C: Optional[float] = None # пунктирная изотерма; например 200.0
-ISO_DASH_TEMP_C = 21.25
+ISO_DASH_TEMP_C = 50
 
 ISO_SNAP_TO_RANGE = True                  # «прилипать» изотерме к границе диапазона кадра
 
