@@ -31,45 +31,22 @@ import math
 import torch
 import torch.nn as nn
 
+from AI.measure_isotherm_width import delta_T_scale_K
 from config import Config                # dataclass-конфигурация
 from pinn_io import load_params_json     # загрузка строго в Config
-
 
 # ---------- Чтение параметров и "экстры" из JSON ----------
 
 def load_cfg_and_extras(json_path: Path) -> Tuple[Config, Dict[str, Any]]:
     """
     Загружает Config и возвращает dict со ВСЕМИ полями JSON.
-    Нужно, чтобы вытащить доп. поля (например, SCAN_SPEED_MM_S, DELTA_T_SCALE_K, пульс-параметры),
+    Нужно, чтобы вытащить доп. поля (например, SCAN_SPEED_MM_S),
     которые не входят в Config.
     """
     json_path = Path(json_path)
     cfg = load_params_json(json_path)
     data = json.loads(json_path.read_text(encoding="utf-8"))
     return cfg, data
-
-
-# ---------- Вспомогательное: ΔT_scale ----------
-
-def require_deltaT_scale_from_json(data: Dict[str, Any]) -> float:
-    """
-    Обязательно достаём DELTA_T_SCALE_K из JSON.
-    Если его нет — бросаем понятную ошибку: масштаб должен быть посчитан
-    на этапе формирования пресета (create_preset_param.py).
-    """
-    if "DELTA_T_SCALE_K" not in data:
-        raise KeyError(
-            "В пресете отсутствует 'DELTA_T_SCALE_K'. "
-            "Он должен быть посчитан в create_preset_param.py "
-            "на основе temp_scaling_mode и сохранён в JSON."
-        )
-    try:
-        val = float(data["DELTA_T_SCALE_K"])
-    except Exception as e:
-        raise ValueError("Поле 'DELTA_T_SCALE_K' должно быть числом (K на единицу U).") from e
-    if not (val > 0.0):
-        raise ValueError("Поле 'DELTA_T_SCALE_K' должно быть > 0.")
-    return val
 
 
 # ---------- Параметры источника ----------
@@ -84,17 +61,15 @@ class SourcePhys:
     mu_star: float
     rho_kg_m3: float
     cp_J_kgK: float
-    deltaT_scale_K: float
+    deltaT_scale: float
     # Временные параметры
     pulse_fwhm_s: Optional[float] = None
     rep_rate_Hz: Optional[float] = None
     pulse_count: Optional[int] = None
     pulses_t0_s: float = 0.0
-    P_peak_W: Optional[float] = None       # Пиковая мощность одного импульса
-    P_avg_W: Optional[float] = None        # Средняя мощность (если задана)
+    P_avg_W: Optional[float] = None
+    P_peak_W: Optional[float] = None
     # Прочее
-    scan_speed_mm_s: Optional[float] = None
-
     @property
     def mu_abs_m_inv(self) -> float:
         # μ_a = mu_star / H
@@ -109,7 +84,6 @@ class SourcePhys:
 
 
 # ---------- Источник ----------
-
 class OpticalSource(nn.Module):
     """
     S(ρ, ζ, τ) — безразмерный источник для уравнения на U(ρ, ζ, τ)
@@ -123,10 +97,8 @@ class OpticalSource(nn.Module):
         self.register_buffer("one", torch.tensor(1.0))
         if device is not None:
             self.to(device)
-
-        # Если указана только средняя мощность — переведём в пиковую
-        if self.p.P_peak_W is None:
-            self._infer_peak_power_from_average()
+        # Перевод в пиковую мощность
+        self._infer_peak_power_from_average()
 
     # --------- служебные расчёты времени/мощности ----------
 
@@ -134,7 +106,6 @@ class OpticalSource(nn.Module):
         p = self.p
         t0 = float(p.pulses_t0_s or 0.0)
         Tw = float(p.Twindow_s)
-
         # Приоритет: заданный pulse_count; иначе из rep_rate*window; иначе одиночный
         if p.rep_rate_Hz and p.rep_rate_Hz > 0.0:
             if p.pulse_count is None:
@@ -234,9 +205,6 @@ class OpticalSource(nn.Module):
 
 def build_optical_source(
     params_json_path: str | Path,
-    *,
-    deltaT_scale_override: Optional[float] = None,
-    device: Optional[str] = None,
 ) -> OpticalSource:
     """
     Создаёт объект источника, используя пресетный JSON.
@@ -249,28 +217,14 @@ def build_optical_source(
     """
     cfg, data = load_cfg_and_extras(Path(params_json_path))
 
-    if deltaT_scale_override is not None:
-        deltaT_scale = float(deltaT_scale_override)
-        if not (deltaT_scale > 0.0):
-            raise ValueError("deltaT_scale_override должен быть > 0.")
-    else:
-        deltaT_scale = require_deltaT_scale_from_json(data)
-
     # Прочтём временные параметры с приоритетом: extras -> cfg
-    pulse_fwhm_s = data.get("PULSE_FWHM_S", getattr(cfg, "pulse_duration_s", None))
-    rep_rate_Hz = data.get("PULSE_REP_HZ", getattr(cfg, "rep_rate_Hz", None))
-    pulse_count = data.get("PULSE_COUNT", None)
-    pulses_t0_s = float(data.get("PULSES_T0_S", 0.0))
-
-    # Мощность: приоритет peak -> avg -> cfg.P_avg_W -> cfg.P_W
-    P_peak_W = data.get("PULSE_PEAK_W", None)
-    P_avg_W = data.get("P_AVG_W", None)
-    if P_avg_W is None:
-        P_avg_W = getattr(cfg, "P_avg_W", None)
-    if P_avg_W is None:
-        # исторически P_W использовалась как средняя; оставим как запасной вариант
-        P_avg_W = getattr(cfg, "P_W", None)
-
+    pulse_fwhm_s = cfg.pulse_duration_s
+    rep_rate_Hz = cfg.rep_rate_Hz
+    pulse_count = cfg.pulse_count
+    pulses_t0_s = cfg.pulses_t0_s
+    P_avg_W = cfg.P_avg_W
+    device = cfg.device
+    deltaT_scale = cfg.deltaT_scale
     src = OpticalSource(
         SourcePhys(
             # Геометрия/материал/нормировки
@@ -281,16 +235,13 @@ def build_optical_source(
             mu_star=cfg.mu_star,
             rho_kg_m3=cfg.rho_kg_m3,
             cp_J_kgK=cfg.cp_J_kgK,
-            deltaT_scale_K=deltaT_scale,
+            deltaT_scale = deltaT_scale,
             # Временные параметры
             pulse_fwhm_s=float(pulse_fwhm_s) if pulse_fwhm_s is not None else None,
             rep_rate_Hz=float(rep_rate_Hz) if rep_rate_Hz is not None else None,
             pulse_count=int(pulse_count) if pulse_count is not None else None,
             pulses_t0_s=float(pulses_t0_s),
-            P_peak_W=float(P_peak_W) if P_peak_W is not None else None,
-            P_avg_W=float(P_avg_W) if P_avg_W is not None else None,
-            # Прочее
-            scan_speed_mm_s=data.get("SCAN_SPEED_MM_S", None),
+            P_avg_W= float(P_avg_W),
         ),
         device=device or getattr(cfg, "device", None),
     )
@@ -541,4 +492,3 @@ if __name__ == "__main__":
         show=True,
         savepath=None,  # например: "temporal_envelope.png"
     )
-
