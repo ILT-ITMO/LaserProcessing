@@ -466,8 +466,6 @@ def plot_temporal_envelope(
         plt.show()
     plt.close()
 
-
-
 if __name__ == "__main__":
     # Пример самопроверки: замените путь на актуальный ваш JSON
     PARAMS_JSON = Path("presets_params/pinn_params_P3p3W_V40mms_20250911_164958.json")

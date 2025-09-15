@@ -77,7 +77,9 @@ def _recompute_time_window_if_needed(cfg: Config) -> None:
         cfg.Twindow_s = need
 
 
-def compute_deltaT_scale_K(cfg: Config) -> float:
+import math
+
+def compute_deltaT_scale_K(cfg) -> float:
     """
     ΔT_scale (K per unit U) согласован с безразмерной формой PDE:
       U = (T - T0) / ΔT_scale,
@@ -96,20 +98,42 @@ def compute_deltaT_scale_K(cfg: Config) -> float:
     eta = float(getattr(cfg, "eta_abs", 1.0))
     # Средняя мощность для расчёта (если нужна)
     P_avg = float(cfg.P_W)
-    alpha = float(cfg.mu_star) / H  # μ_a [1/m] = mu_star / H
+    alpha = float(cfg.mu_star) / H  # μ_a [1/m] = mu_star / H  (название оставлено как в исходнике)
+
+    # --- NEW: оценка пиковых импульсных величин, учитывая, что pulse_duration_s = FWHM ---
+    rep = getattr(cfg, "rep_rate_Hz", None)
+    Ep  = getattr(cfg, "E_pulse_J",  None)
+    tau_fwhm = float(getattr(cfg, "pulse_duration_s", Tw))
+    # Gaussian: sigma_t = FWHM / (2*sqrt(2*ln2))
+    sigma_t = tau_fwhm / (2.0 * math.sqrt(2.0 * math.log(2.0))) if tau_fwhm > 0 else None
+    # Если нет энергии импульса, но есть rep_rate — вывести из средней мощности
+    if (Ep is None) and (rep is not None):
+        Ep = float(P_avg) / float(rep)
+    # Пиковая мощность гаусс-импульса: P_peak = Ep / (sigma_t * sqrt(2π))
+    if (Ep is not None) and (sigma_t is not None) and (sigma_t > 0):
+        P_peak = float(Ep) / (sigma_t * math.sqrt(2.0 * math.pi))
+    else:
+        # Fallback: если нет импульсных данных — используем среднюю (CW)
+        P_peak = float(P_avg)
 
     # Оценка пикового объёмного источника для режима A/B:
-    Q_peak = eta * P_avg * (2.0 / (math.pi * w0**2)) * alpha
+    # ВАЖНО: w0_m — это 1/e радиус ⇒ I0 = P / (π w0^2), а не 2P/(π w0^2)
+    Q_peak = eta * P_peak * (1.0 / (math.pi * w0**2)) * alpha  # <<< заменили 2.0 -> 1.0
 
     mode = (getattr(cfg, "temp_scaling_mode", "A") or "A").upper()
     if mode == "A":
         return float((Tw * Q_peak) / (rho * cp))
 
     if mode == "B":
-        t_p = float(getattr(cfg, "pulse_duration_s", Tw))  # если не задано — Tw
+        # вместо простого t_p используем эффективную длительность гаусса:
+        # tau_eff = sigma_t * sqrt(2π); если sigma_t не определена — fallback к t_p
+        if (sigma_t is not None) and (sigma_t > 0):
+            tau_eff = sigma_t * math.sqrt(2.0 * math.pi)     # <<<
+        else:
+            tau_eff = float(getattr(cfg, "pulse_duration_s", Tw))
         U_t = float(getattr(cfg, "U_target", 0.9))
         U_t = max(1e-6, U_t)
-        return float((Q_peak * t_p) / (rho * cp) / U_t)
+        return float((Q_peak * tau_eff) / (rho * cp) / U_t)  # <<< tau_eff вместо t_p
 
     if mode == "C":
         if (cfg.E_pulse_J is not None) and (cfg.rep_rate_Hz is not None):

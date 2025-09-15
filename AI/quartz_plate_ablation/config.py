@@ -12,8 +12,6 @@ class Config:
     Twindow_s: float = 1e-6       # временное окно моделирования
     mu_star: float = 10.0         # безразмерный поглотительный параметр (μ_a * H)
     wl: float = 10.6e-6            # длина волны излучения
-
-
     # --- Материал ---
     rho_kg_m3: float = 2200.0     # плотность (кварц)
     cp_J_kgK: float = 740.0       # теплоёмкость
@@ -46,6 +44,7 @@ class Config:
     N_axis: int = 2048
     N_wall: int = 2048
     N_zbc: int = 1024
+    source_calibration: str = 'Peak Power'
 
     widths: Tuple[int, ...] = (64, 64, 64, 64)
     lr: float = 1e-3
