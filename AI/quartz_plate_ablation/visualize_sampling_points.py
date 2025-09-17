@@ -16,7 +16,7 @@ from pinn_io import load_params_json
 from sampling import make_training_sets
 
 # ==== НАСТРОЙКИ ====
-PARAMS_PATH = Path("./presets_params/pinn_params_P3p3W_V40mms_20250909_170950.json")  # путь к JSON с параметрами
+PARAMS_PATH = Path("./presets_params/pinn_params_P3p3W_V40mms_20250917_132437.json")  # путь к JSON с параметрами
 DEVICE = None                           # можно задать "cpu" или "cuda", если None → cfg.device
 MAX_PER_SET = 4000                      # макс. число точек каждого типа для отрисовки (-1 = без ограничения)
 SEED = 123                              # seed для случайного подвыборочного отображения

@@ -12,7 +12,7 @@ from config import Config
 from source import load_cfg_and_extras, build_optical_source
 
 # ======== CONFIG ========
-PRESET_PATH = Path("./presets_params/pinn_params_P3p3W_V40mms_20250911_164958.json")
+PRESET_PATH = Path("./presets_params/pinn_params_P3p3W_V40mms_20250917_132437.json")
 CKPT_PATH   = Path("checkpoints/best.pt")
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 SEED        = 123
@@ -347,7 +347,7 @@ def run_visualization(
     dev = torch.device(device)
 
     model = build_model_from_cfg(cfg).to(dev)
-    src = build_optical_source(Path(preset_path), device=str(dev))
+    src = build_optical_source(Path(preset_path))
 
     load_checkpoint_into(model, ckpt_path, dev)
     model.eval()

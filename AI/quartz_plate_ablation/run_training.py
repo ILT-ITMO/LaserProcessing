@@ -22,7 +22,7 @@ from physics import compute_losses
 from source import build_optical_source, load_cfg_and_extras
 
 # ---------- User-config block (edit here as needed) ----------
-PRESET_PATH = Path("presets_params/pinn_params_P3p3W_V40mms_20250911_164958.json")   # <- set your preset file
+PRESET_PATH = Path("presets_params/pinn_params_P3p3W_V40mms_20250917_132437.json")   # <- set your preset file
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SEED = 42
 
@@ -213,7 +213,7 @@ def run_training(preset_path: Path = PRESET_PATH, device: str = DEVICE, seed: in
 
     dev = torch.device(device)
     model = build_model_from_cfg(cfg).to(dev)
-    src = build_optical_source(Path(preset_path), device=str(dev))
+    src = build_optical_source(Path(preset_path))
 
     batch_iter = make_batch_iter(cfg, extras, dev)
     val_provider = make_val_provider(cfg, extras, dev)

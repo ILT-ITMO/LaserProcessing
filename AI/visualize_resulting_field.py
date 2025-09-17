@@ -45,7 +45,7 @@ ISO_TEMP_C  = 80.0
 
 # Перевод безразмерной U -> Кельвины: ΔT_scale_K(P)
 import math
-DELTA_T_SCALE_K = (Twindow_s * (2.0 * P_W * mu_inv_m)) / (math.pi * w0_m**2 * rho_m * cp_JkgK)
+DELTA_T_SCALE_K = cfg.get("deltaT_scale", 1.0)
 
 # Если в NPZ нет 't_sec', запасной Twindow:
 Twindow_fallback_s = Twindow_s
