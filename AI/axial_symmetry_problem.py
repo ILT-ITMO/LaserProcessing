@@ -7,6 +7,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import json, os
+from pathlib import Path
+
+
+PARAMS_JSON = "pinn_params.json"
+
+def save_params_json(path, dct):
+    Path(path).write_text(json.dumps(dct, indent=2, ensure_ascii=False))
 
 # --------------------------
 # 0) ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -149,7 +157,7 @@ def compute_inverse_loss_axisymmetric(
         loss_bc = loss_bc + torch.mean(du_dz_t**2)
 
     # --- Total ---
-    loss_total = w_pde*loss_pde + w_data*loss_data + w_ic*loss_ic + w_bc*loss_bc
+    loss_total = loss_pde + w_data*loss_data + w_ic*loss_ic + w_bc*loss_bc
     return loss_total, {
         "loss_pde": loss_pde.detach().item(),
         "loss_data": loss_data.detach().item(),
@@ -168,8 +176,8 @@ W = 252.4e-6          # ширина канала (по r-сечению)
 R = W/2               # радиус области (ось симметрии в 0)
 H = 21.9e-6           # глубина
 w0 = 2.0e-6          # лучевой радиус (для пятна 62 мкм по 1/e)
-Twindow = 10e-6       # окно времени, которое нормируем в [0,1]
-P = 11.1              # Вт (для справки/масштаба источника, не обязателен)
+Twindow =50e-6       # окно времени, которое нормируем в [0,1]
+P = 11.1             # Вт (для справки/масштаба источника, не обязателен)
 
 # Свойства fused silica (примерные табличные)
 k, rho, cp = 1.38, 2200.0, 703.0
@@ -184,19 +192,48 @@ w0_star = w0 / R
 
 # Поглощение по глубине (безразмерное): mu_star = μ * H
 # Если данных нет, возьмем "поверхностное" поглощение (большое μ*)
-mu_star = 100.0
+mu_star = 20
 
 # Амплитуда источника в S' (безразмерная); при желании привяжите к P*
 
-I0 = 2 * P / (math.pi * w0**2)     # пик. интенсивность, Вт/м^2
+I0 = 2 * P / (math.pi * w0**2)     # Вт/м^2
 mu  = mu_star / H                  # 1/м
-S_amp = (Twindow / (rho * cp)) * mu * I0
-S_amp = 1
+
+# Физический S' (как было):
+S_amp_physprime = (Twindow / (rho * cp)) * mu * I0
+
+# Безразмерный температурный масштаб (для пост-обработки):
+DELTA_T_SCALE = (Twindow * (2.0 * P * mu)) / (math.pi * w0**2 * rho * cp)
+
+# Безразмерная амплитуда источника для PDE:
+S_amp_hat = S_amp_physprime / DELTA_T_SCALE   # ≈ 1.0 по определению
+
+# --- Импульс по времени: гаусс с FWHM=1 мкс; пик = S_amp ---
+pulse_fwhm_s = 1e-6           # 1 microsecond
+pulse_t0_s   = 0.5e-6         # центр импульса (можете менять)
+
+# Переход к безразмерному времени tau (tau = t / Twindow)
+fwhm_tau = pulse_fwhm_s / Twindow
+t0_tau   = pulse_t0_s   / Twindow
+sigma_tau = fwhm_tau / (2.0 * math.sqrt(2.0 * math.log(2.0)))  # FWHM -> σ
+
+def temporal_envelope(tau: torch.Tensor) -> torch.Tensor:
+    _t0  = torch.as_tensor(t0_tau,   dtype=tau.dtype, device=tau.device)
+    _sig = torch.as_tensor(sigma_tau, dtype=tau.dtype, device=tau.device)
+    # Нормировано так, что максимум = 1 при tau = t0
+    return torch.exp(-0.5 * ((tau - _t0) / (_sig + 1e-32))**2)
 
 
 def source_fn(rho, zeta, tau):
-    # Гауссов по радиусу, экспоненциальное затухание по глубине; постоянен по времени
-    return S_amp * torch.exp(-2.0 * (rho / w0_star) ** 2) * torch.exp(-mu_star * zeta)
+    spatial = torch.exp(-2.0 * (rho / (w0_star + 1e-32))**2) * torch.exp(-mu_star * zeta)
+    return S_amp_hat * spatial * temporal_envelope(tau)   # именно S_amp_hat!
+
+
+
+#
+# def source_fn(rho, zeta, tau):
+#     # Гауссов по радиусу, экспоненциальное затухание по глубине; постоянен по времени
+#     return S_amp * torch.exp(-2.0 * (rho / w0_star) ** 2) * torch.exp(-mu_star * zeta)
 
 # --------------------------
 # 2) МОДЕЛЬ (MLP)
@@ -223,11 +260,42 @@ class MLP(nn.Module):
 def sample_uniform(n):          # [0,1] -> [N,1]
     return torch.rand(n, 1, device=device)
 
-def make_training_sets(N_coll=20000, N_ic=4096, N_axis=2048, N_wall=2048, N_z=2048):
+def sample_tau_impulse(N, t0_tau, sigma_tau, mix=0.8, k_clip=4.0, device=None, requires_grad=True):
+    """
+    Смешанный сэмплинг времени:
+      - доля `mix` точек: гаусс вокруг t0_tau с σ = sigma_tau
+      - доля (1-mix): равномерно по [0,1]
+    Значения жёстко обрезаются в [0,1] и чуть поджимаются от краёв.
+    """
+    if device is None:
+        device = next(model.parameters()).device  # или ваш глобальный device
+    Nu = int((1.0 - mix) * N)
+    Ng = N - Nu
+
+    # равномерная часть
+    tau_u = torch.rand(Nu, 1, device=device)
+
+    # гауссовая часть (усекаем в ±k_clip σ)
+    eps = 1e-6
+    g = torch.randn(Ng, 1, device=device)
+    tau_g = t0_tau + sigma_tau * g
+    tau_g = torch.clamp(tau_g, t0_tau - k_clip * sigma_tau, t0_tau + k_clip * sigma_tau)
+
+    # объединяем и жёстко ограничиваем [eps, 1-eps]
+    tau = torch.cat([tau_u, tau_g], dim=0)
+    tau = tau.clamp(eps, 1.0 - eps)
+    return tau.requires_grad_(requires_grad)
+
+
+
+
+def make_training_sets(N_coll=20000, N_ic=4096, N_axis=2048, N_wall=2048, N_z=1024):
     # Внутренние точки для PDE
     rho_c  = sample_uniform(N_coll)
     zeta_c = sample_uniform(N_coll)
-    tau_c  = sample_uniform(N_coll)
+    t0 = torch.as_tensor(t0_tau, device=device).view(1, 1)
+    sg = torch.as_tensor(sigma_tau, device=device).view(1, 1)
+    tau_c = sample_tau_impulse(N_coll, t0, sg, mix=0.8, k_clip=4.0, device=device, requires_grad=True)
 
     # Начальное условие: u(r,z,0)=0 (можно заменить на вашу IC)
     rho_ic  = sample_uniform(N_ic)
@@ -307,6 +375,34 @@ if __name__ == "__main__":
         _ = torch.empty(1, device="cuda").sum()  # любая тривиальная CUDA-операция
         torch.cuda.synchronize()
     print(f"beta(single) = {beta_single:.3e}  (w0* = {w0_star:.3f}, mu* = {mu_star:.1f})")
+
+    params_to_save = {
+        # Геометрия (SI)
+        "W_m": float(W),  # ширина по r-оси домена (м) ИЛИ используйте ваши имена
+        "H_m": float(H),  # толщина (м)
+        "R_m": float(W / 2.0),
+        "w0_m": float(w0),
+
+        # Материал
+        "rho_m": float(rho),
+        "cp_JkgK": float(cp),
+
+        # Время
+        "Twindow_s": float(Twindow),
+
+        # Оптика/источник
+        "P_W": float(P),
+        "mu_star": float(mu_star),
+
+        # Визуализация
+        "T0_C": float(T0_C) if 'T0_C' in globals() else 25.0,
+        "ISO_TEMP_C": float(ISO_TEMP_C) if 'ISO_TEMP_C' in globals() else 0.0
+    }
+
+    # Сохраняем/обновляем JSON
+    save_params_json(PARAMS_JSON, params_to_save)
+    print(f"[info] Параметры сохранены в {PARAMS_JSON}")
+
 
     model = train(num_epochs=3000, print_every=200, lr=1e-3)
     # Проба: поле при τ=1 на сетке 65x65

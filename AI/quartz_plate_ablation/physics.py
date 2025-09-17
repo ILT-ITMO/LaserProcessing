@@ -31,6 +31,10 @@ SourceLike = Optional[Union[nn.Module, Callable[..., Tensor]]]
 
 
 def physical_estimation(cfg:Config):
+
+    '''Функция делает физические оценки изходя из параметров задачи
+    В частности определяет [fhдиффузионную длину и характерное время распространения теплового поля'''
+
     rho_kg_m3 = float(cfg.rho_kg_m3)
     cp  = float(cfg.cp_J_kgK)
     k = float(cfg.k_W_mK)
@@ -41,7 +45,7 @@ def physical_estimation(cfg:Config):
     wl = float(cfg.wl)
     k_imag = float(cfg.k_imag)
     # Средняя мощность для расчёта (если нужна)
-    P_W = float(cfg.P_W)
+    P_W = float(cfg.P_avg_W)
     alpha = k/rho_kg_m3/cp
     mu = 4*np.pi*k_imag/wl
     rep_rate = cfg.rep_rate_Hz
@@ -56,7 +60,7 @@ def physical_estimation(cfg:Config):
         print('Происходит локальное накопление энергии')
     else:
         print('Тепло успевает диссипировать')
-    if l_diff <
+    if l_diff < 1/mu:
         print('Пользоваться cильным поглощением нельзя')
     # print(f"")
     # print(mu)

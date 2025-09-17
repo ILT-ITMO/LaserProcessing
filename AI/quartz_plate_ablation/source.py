@@ -30,8 +30,8 @@ import json
 import math
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
-from AI.measure_isotherm_width import delta_T_scale_K
 from config import Config                # dataclass-конфигурация
 from pinn_io import load_params_json     # загрузка строго в Config
 
@@ -158,9 +158,9 @@ class OpticalSource(nn.Module):
         return env
 
     @property
-    def deltaT_scale_K(self) -> float:
+    def deltaT_scale(self) -> float:
         """Удобный доступ к масштабу ΔT (K на единицу U), проброшенному из пресета."""
-        return float(self.p.deltaT_scale_K)
+        return float(self.p.deltaT_scale)
 
     # --- физический q(r,z,t) в Вт/м^3 ---
     def q_W_m3(self, rho: torch.Tensor, zeta: torch.Tensor, tau: torch.Tensor) -> torch.Tensor:
@@ -180,7 +180,7 @@ class OpticalSource(nn.Module):
             # если нет rep_rate/FWHM, env≈1 => трактуем как CW со средней мощностью
             P_t = float(self.p.P_avg_W) * env
         else:
-            # финальный запасной вариант — CW с cfg.P_W (может быть 0)
+            # финальный запасной вариант — CW с cfg.P_avg_W (может быть 0)
             P_t = float(getattr(self.p, "P_avg_W", 0.0)) * env  # обычно недостижимо
 
         # I(r,t) = 2P(t)/(π w0^2) * exp(-2 r^2 / w0^2)
@@ -197,7 +197,7 @@ class OpticalSource(nn.Module):
         S = (Twindow_s / (ρ cp ΔT_scale)) * q_W_m3
         """
         q = self.q_W_m3(rho, zeta, tau)
-        scale = self.p.Twindow_s / (self.p.rho_kg_m3 * self.p.cp_J_kgK * self.p.deltaT_scale_K)
+        scale = self.p.Twindow_s / (self.p.rho_kg_m3 * self.p.cp_J_kgK * self.p.deltaT_scale)
         return q * scale
 
 
@@ -236,12 +236,13 @@ def build_optical_source(
             rho_kg_m3=cfg.rho_kg_m3,
             cp_J_kgK=cfg.cp_J_kgK,
             deltaT_scale = deltaT_scale,
+
             # Временные параметры
             pulse_fwhm_s=float(pulse_fwhm_s) if pulse_fwhm_s is not None else None,
             rep_rate_Hz=float(rep_rate_Hz) if rep_rate_Hz is not None else None,
             pulse_count=int(pulse_count) if pulse_count is not None else None,
             pulses_t0_s=float(pulses_t0_s),
-            P_avg_W= float(P_avg_W),
+            P_avg_W= float(cfg.P_avg_W),
         ),
         device=device or getattr(cfg, "device", None),
     )
@@ -283,7 +284,6 @@ def plot_source_2d(
     """
     Рисует карту S(ρ, ζ) при фиксированном τ (в безразмерных координатах).
     """
-    import matplotlib.pyplot as plt
 
     device = device or next(source.parameters(), torch.tensor(0.)).device
     rho_lin = torch.linspace(0.0, 1.0, Nr, device=device)
@@ -468,7 +468,7 @@ def plot_temporal_envelope(
 
 if __name__ == "__main__":
     # Пример самопроверки: замените путь на актуальный ваш JSON
-    PARAMS_JSON = Path("presets_params/pinn_params_P3p3W_V40mms_20250911_164958.json")
+    PARAMS_JSON = Path("presets_params/pinn_params_P3p3W_V40mms_20250917_132437.json")
     source = build_optical_source(PARAMS_JSON)
 
     # Пример: наложим коллокационные точки
@@ -481,12 +481,12 @@ if __name__ == "__main__":
         savepath=None,  # например: "source_map.png"
     )
 
-    # Проверка: огибающая во времени (в микросекундах), нормированная
-    plot_temporal_envelope(
-        source,
-        Nt=4000,
-        normalize=True,
-        t_unit="us",
-        show=True,
-        savepath=None,  # например: "temporal_envelope.png"
-    )
+    # # Проверка: огибающая во времени (в микросекундах), нормированная
+    # plot_temporal_envelope(
+    #     source,
+    #     Nt=4000,
+    #     normalize=True,
+    #     t_unit="us",
+    #     show=True,
+    #     savepath=None,  # например: "temporal_envelope.png"
+    # )

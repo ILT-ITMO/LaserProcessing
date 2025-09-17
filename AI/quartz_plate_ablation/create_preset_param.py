@@ -97,7 +97,7 @@ def compute_deltaT_scale_K(cfg) -> float:
     H   = float(cfg.H_m)
     eta = float(getattr(cfg, "eta_abs", 1.0))
     # Средняя мощность для расчёта (если нужна)
-    P_avg = float(cfg.P_W)
+    P_avg = float(cfg.P_avg_W)
     alpha = float(cfg.mu_star) / H  # μ_a [1/m] = mu_star / H  (название оставлено как в исходнике)
 
     # --- NEW: оценка пиковых импульсных величин, учитывая, что pulse_duration_s = FWHM ---
