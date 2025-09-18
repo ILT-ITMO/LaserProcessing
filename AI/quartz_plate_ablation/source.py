@@ -184,9 +184,9 @@ class OpticalSource(nn.Module):
             P_t = float(getattr(self.p, "P_avg_W", 0.0)) * env  # обычно недостижимо
 
         # I(r,t) = 2P(t)/(π w0^2) * exp(-2 r^2 / w0^2)
+        # In case when w0_m is a 1/e2 intensity raduis
         I0 = 2.0 / (math.pi * (self.p.w0_m ** 2))
         I_r_t = I0 * P_t * torch.exp(-2.0 * (r ** 2) / (self.p.w0_m ** 2))
-
         mu_a = self.p.mu_abs_m_inv
         q = mu_a * I_r_t * torch.exp(-mu_a * z)
         return q  # Вт/м^3

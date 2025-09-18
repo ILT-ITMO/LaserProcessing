@@ -151,10 +151,27 @@ def compute_deltaT_scale_K(cfg) -> float:
     raise ValueError(f"Unknown temp_scaling_mode: {mode}")
 
 
+def _recompute_mu_star_from_k(cfg) -> None:
+    """
+    Пересчёт mu_star из мнимой части показателя преломления (k_imag).
+    mu_a [1/м] = 4π * k_imag / wl
+    mu_star    = mu_a * H_m   (безразмерный)
+    """
+    k_imag = getattr(cfg, "k_imag", None)
+    wl = getattr(cfg, "wl", None)   # длина волны в метрах
+    if k_imag is None or wl is None:
+        return
+    mu_a = 4.0 * math.pi * float(k_imag) / float(wl)   # [1/м]
+    cfg.mu_star = float(mu_a) * float(cfg.H_m)         # безразмерный
+
+
 def main():
     for p_w, v_mm_s in product(POWERS_W, SCAN_SPEED_MM_S):
         cfg = make_cfg(BASE_CFG)
         # 1) Пересчёт окна, если задана гребёнка импульсов
+
+        _recompute_mu_star_from_k(cfg)
+
         _recompute_time_window_if_needed(cfg)
 
         # 2) Имя файла
