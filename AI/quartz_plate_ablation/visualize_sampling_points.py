@@ -13,11 +13,10 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from pinn_io import load_params_json
-from sampling import make_training_sets
+from sampling import make_training_sets, pulse_centers_tau
 
 # ==== НАСТРОЙКИ ====
-PARAMS_PATH = Path("./presets_params/pinn_params_P3p3W_V40mms_20250917_132437.json")  # путь к JSON с параметрами
-DEVICE = None                           # можно задать "cpu" или "cuda", если None → cfg.device
+PARAMS_PATH = Path("./presets_params/pinn_params_P3p3W_V40mms_20250918_190048.json")  # путь к JSON с параметрами
 MAX_PER_SET = 4000                      # макс. число точек каждого типа для отрисовки (-1 = без ограничения)
 SEED = 123                              # seed для случайного подвыборочного отображения
 SHOW_LEGEND = True                      # показывать легенду на графике
@@ -38,7 +37,7 @@ def _subsample(x: np.ndarray, y: np.ndarray, max_n: int, rng: np.random.Generato
 
 def main():
     cfg = load_params_json(PARAMS_PATH)
-    device = DEVICE or cfg.device
+    device =  cfg.device
     batches = make_training_sets(cfg, device=device)
     rng = np.random.default_rng(SEED)
     max_per = None if MAX_PER_SET is not None and MAX_PER_SET < 0 else MAX_PER_SET
@@ -128,6 +127,71 @@ def visualize_sampling_panels(cfg, device="cpu", max_per_set=4000, seed=123):
     plt.show()
 
 
+
+def visualize_pulse_train_with_samples(cfg, sets=("pde","ic","axis","wall","z0","z1"),
+                                       max_points_per_set=1000, save_path=None):
+    """
+    Строит временную последовательность импульсов в точке r=0,z=0 (по параметрам из JSON)
+    и маркерами отмечает τ-точки семплирования из sampling.py (преобразованные в секунды).
+    Минимальные изменения: используем существующие функции sampling, без дублирования логики.
+    """
+    # батчи из sampling.py
+    batches = make_training_sets(cfg, device=getattr(cfg, "device", "cpu"))
+    Tw = float(getattr(cfg, "Twindow_s", 1.0))
+
+    # t-сетка и нормализованная интенсивность (сумма гауссианов по центрам из pulse_centers_tau)
+    t = np.linspace(0.0, Tw, 2000, dtype=float)
+    I = np.zeros_like(t)
+    if getattr(cfg, "Pulsed", False) and getattr(cfg, "pulse_duration_s", None) and getattr(cfg, "pulse_count", None):
+        centers_tau = pulse_centers_tau(cfg).detach().cpu().numpy()
+        centers_t = centers_tau * Tw
+        fwhm = float(cfg.pulse_duration_s)
+        sigma_t = fwhm / (2.0 * (2.0*np.log(2.0))**0.5)
+        if sigma_t <= 0:
+            sigma_t = Tw * 1e-6
+        for tc in centers_t:
+            I += np.exp(-0.5 * ((t - tc) / sigma_t)**2)
+
+    # график
+    fig, ax = plt.subplots(figsize=(10, 3.2))
+    ax.plot(t, I, linewidth=1.5)
+    ax.set_title("Импульсная последовательность в точке r=0, z=0 и точки сэмплирования", fontsize=11)
+    ax.set_xlabel("t, s"); ax.set_ylabel(" относит. интенсивность ")
+    ax.grid(True, alpha=0.25)
+
+    # наложить маркеры сэмплирования из выбранных наборов (τ→t), на уровне I(t)
+    def _interp_I(tt):
+        return np.interp(tt, t, I) if I.max() > 0 else np.zeros_like(tt)
+
+    for name in sets:
+        if name not in batches:
+            continue
+        tup = batches[name]
+        if name == "pde":
+            tau = tup[2].detach().cpu().numpy().reshape(-1)   # (rho, zeta, tau)
+        elif name == "ic":
+            continue  # в IC τ нет
+        else:
+            tau = tup[1].detach().cpu().numpy().reshape(-1)   # (coord, tau)
+        if tau.size == 0:
+            continue
+        if tau.size > max_points_per_set:
+            idx = np.linspace(0, tau.size-1, max_points_per_set).astype(int)
+            tau = tau[idx]
+        tt = tau * Tw
+        yy = _interp_I(tt)
+        ax.plot(tt, yy, linestyle='none', marker='o', markersize=2, alpha=0.6, label=name)
+
+    ax.legend(ncol=min(3, len(sets)), fontsize=8, framealpha=0.9)
+    fig.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+    else:
+        plt.show()
+
+
+
+
 if __name__ == "__main__":
     cfg = load_params_json(PARAMS_PATH)
-    visualize_sampling_panels(cfg)
+    visualize_pulse_train_with_samples(cfg)

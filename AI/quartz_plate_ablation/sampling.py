@@ -48,28 +48,91 @@ def sample_rho_area(N: int, *, device: str, requires_grad: bool = True, axis_bia
     return r
 
 
+# sampling.py
+import math
+import torch
+from torch import Tensor
+from typing import Optional
+
+_FWHM_TO_SIGMA = 1.0 / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+
 def sample_tau_impulse(
     N: int,
     *,
     device: str,
+    # fallback для режима «одного импульса», если импульсных параметров нет:
     t0_tau: float = 0.5,
     sigma_tau: float = 0.15,
     mix: float = 0.6,
     requires_grad: bool = True,
+    cfg: Optional["Config"] = None,
 ) -> Tensor:
-    """Смесь равномерного τ и «импульсного» около t0_tau с дисперсией sigma_tau.
-    mix — доля импульсной компоненты (0..1). Значения обрезаются в [0,1].
     """
-    tau_uni = torch.rand(N, 1, device=device)
+    Сэмплинг τ ∈ [0,1] как смеси равномерного распределения и импульсной части.
+    Если в cfg заданы импульсные параметры и Pulsed=True, используем гребёнку
+    из pulse_count импульсов с центрами на сетке rep_rate_Hz, начиная с pulses_t0_s.
+    """
+    tau_uniform = torch.rand((N, 1), device=device)
 
-    normal = torch.distributions.Normal(
-        torch.tensor(t0_tau, device=device), torch.tensor(sigma_tau, device=device)
+    use_train = (
+        cfg is not None
+        and bool(getattr(cfg, "Pulsed", False))
+        and (getattr(cfg, "pulse_count", None) is not None)
+        and (getattr(cfg, "rep_rate_Hz", None) is not None)
+        and (getattr(cfg, "pulse_duration_s", None) is not None)
+        and float(getattr(cfg, "Twindow_s", 0.0)) > 0.0
     )
-    tau_imp = normal.sample((N, 1)).clamp(0.0, 1.0)
 
-    tau_mix = mix * tau_imp + (1 - mix) * tau_uni
-    tau_mix.requires_grad_(requires_grad)
-    return tau_mix
+    if use_train:
+        Tw = float(cfg.Twindow_s)
+        Np = int(cfg.pulse_count)
+        rep = float(cfg.rep_rate_Hz)
+        t0 = float(getattr(cfg, "pulses_t0_s", 0.0))
+        fwhm = float(cfg.pulse_duration_s)
+
+        sigma_t = fwhm * _FWHM_TO_SIGMA          # σ в секундах
+        sigma_tau_train = max(sigma_t / Tw, 1e-8)  # σ в безразмерном τ
+
+        # центры импульсов в секундах → нормируем в τ∈[0,1]
+        centers_tau = torch.tensor(
+            [ (t0 + i / rep) / Tw for i in range(Np) ],
+            dtype=torch.float32, device=device
+        )  # размер (Np,)
+
+        # выбираем импульс с равными весами, затем сэмплируем нормаль вокруг его центра
+        idx = torch.randint(low=0, high=centers_tau.numel(), size=(N, 1), device=device)
+        means = centers_tau[idx]  # (N,1)
+        tau_impulse = torch.normal(mean=means, std=sigma_tau_train)  # (N,1)
+
+        tau = mix * tau_uniform + (1.0 - mix) * tau_impulse
+    else:
+        # одиночный импульс (старое поведение)
+        tau_impulse = torch.normal(mean=t0_tau, std=sigma_tau, size=(N, 1), device=device)
+        tau = mix * tau_uniform + (1.0 - mix) * tau_impulse
+
+    tau = torch.clamp(tau, 0.0, 1.0)
+    tau.requires_grad_(requires_grad)
+    return tau
+
+def pulse_centers_tau(cfg: "Config") -> torch.Tensor:
+    """
+    Возвращает центры импульсов в нормированной временной координате τ∈[0,1].
+    Если импульсы не заданы/отключены — возвращает пустой тензор.
+    """
+    Pulsed = getattr(cfg, "Pulsed", False)
+    rep = getattr(cfg, "rep_rate_Hz", None)
+    count = getattr(cfg, "pulse_count", None)
+    t0 = float(getattr(cfg, "pulses_t0_s", 0.0) or 0.0)
+    Tw = float(getattr(cfg, "Twindow_s", 1.0))
+
+    if not Pulsed or rep is None or count is None or Tw <= 0:
+        return torch.empty(0, dtype=torch.float32, device=getattr(cfg, "device", "cpu"))
+
+    # центры в секундах → нормировка в τ
+    centers_t = torch.arange(int(count), dtype=torch.float32, device=getattr(cfg, "device", "cpu")) / float(rep) + t0
+    centers_tau = centers_t / Tw
+    return torch.clamp(centers_tau, 0.0, 1.0)
+
 
 
 # ------------------------------- #

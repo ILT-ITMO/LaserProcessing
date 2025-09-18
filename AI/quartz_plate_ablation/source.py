@@ -12,7 +12,7 @@
 
 Где q_W_m3 — объёмная мощность поглощения Гауссова пучка
 с экспоненциальным затуханием по глубине (Beer–Lambert):
-  q(r,z,t) = μ_a * I_surf(r,t) * exp(-μ_a z),  μ_a = mu_star / H_m
+  q(r,z,t) = μ_a * I_surf(r,t) * exp(-μu_star* z),  μ_a = mu_star / H_m
   I_surf(r,t) = (2 P(t) / (π w0^2)) * exp(-2 r^2 / w0^2)
 
 Временной профиль — гребёнка гауссовых импульсов:
@@ -49,6 +49,55 @@ def load_cfg_and_extras(json_path: Path) -> Tuple[Config, Dict[str, Any]]:
     return cfg, data
 
 
+# source.py
+import math
+from typing import Optional
+from config import Config  # тип для подсказок; можно убрать при необходимости
+
+_FWHM_TO_SIGMA = 1.0 / (2.0 * math.sqrt(2.0 * math.log(2.0)))  # ≈ 0.42466
+
+def recompute_time_window_if_needed(cfg: "Config") -> None:
+    """
+    Гарантирует, что Twindow_s достаточно велико, чтобы поместились ВСЕ импульсы
+    при заданных pulse_count / rep_rate_Hz / pulses_t0_s / pulse_duration_s.
+
+    Мутирует cfg.Twindow_s по месту.
+    """
+    if not (getattr(cfg, "Pulsed", False)
+            and cfg.pulse_count
+            and cfg.rep_rate_Hz
+            and cfg.pulse_duration_s is not None):
+        return  # CW-режим или неполные данные — ничего не делаем
+
+    Np = int(cfg.pulse_count)
+    rep = float(cfg.rep_rate_Hz)
+    t0 = float(cfg.pulses_t0_s)
+    fwhm = float(cfg.pulse_duration_s)
+
+    # Длительность гребёнки по центрам: от первого до последнего центра
+    train_span = 0.0 if Np <= 1 else (Np - 1) / rep
+    last_center_time = t0 + train_span
+
+    # Подушка безопасности: ±3σ от центра последнего импульса (и небольшой запас слева)
+    sigma_t = fwhm * _FWHM_TO_SIGMA
+    safety_pad = 3.0 * sigma_t
+
+    needed_Twindow = max(
+        cfg.Twindow_s,                      # текущее окно (если уже больше — не уменьшаем)
+        last_center_time + safety_pad       # чтобы «хвост» последнего импульса влез
+    )
+
+    # Если первый импульс стартует не в нуле, можно учесть и левый хвост
+    # (опционально, но можно добавить небольшой глобальный запас)
+    left_pad = max(0.0, 3.0 * sigma_t - t0)
+    needed_Twindow += max(0.0, left_pad)
+
+    if needed_Twindow > cfg.Twindow_s:
+        cfg.Twindow_s = needed_Twindow
+
+
+
+
 # ---------- Параметры источника ----------
 
 @dataclass
@@ -71,7 +120,7 @@ class SourcePhys:
     P_peak_W: Optional[float] = None
     # Прочее
     @property
-    def mu_abs_m_inv(self) -> float:
+    def mu_a(self) -> float:
         # μ_a = mu_star / H
         return float(self.mu_star / self.H_m)
 
@@ -187,8 +236,8 @@ class OpticalSource(nn.Module):
         # In case when w0_m is a 1/e2 intensity raduis
         I0 = 2.0 / (math.pi * (self.p.w0_m ** 2))
         I_r_t = I0 * P_t * torch.exp(-2.0 * (r ** 2) / (self.p.w0_m ** 2))
-        mu_a = self.p.mu_abs_m_inv
-        q = mu_a * I_r_t * torch.exp(-mu_a * z)
+        mu_a = self.p.mu_a
+        q = mu_a * I_r_t * torch.exp(-self.p.mu_star * z)
         return q  # Вт/м^3
 
     # --- безразмерный S(ρ,ζ,τ) ---

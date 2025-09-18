@@ -124,6 +124,7 @@ def _eval_source(
 
     if isinstance(src, nn.Module):
         return src(rho, zeta, tau)
+        return src(rho, zeta, tau)
 
     try:
         return src(rho, zeta, tau)  # type: ignore[misc]
@@ -137,7 +138,7 @@ def make_source_from_json(params_json_path: str | Path, *, device: Optional[str]
     Оборачивает source.build_optical_source, импортируя его только при вызове.
     """
     from source import build_optical_source  # локальный импорт, чтобы не плодить циклы
-    return build_optical_source(Path(params_json_path), device=device)
+    return build_optical_source(Path(params_json_path))
 
 
 # ------------------------------- #

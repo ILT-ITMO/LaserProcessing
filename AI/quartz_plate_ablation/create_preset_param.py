@@ -11,6 +11,9 @@ from config import Config
 from pinn_io import save_params_json
 
 
+from source import recompute_time_window_if_needed
+
+
 
 
 
@@ -38,7 +41,7 @@ BASE_CFG = dict(
     # Импульсные поля (опционально; можно оставить None)
     pulse_duration_s=1e-6,   # FWHM, s
     rep_rate_Hz=8e3,        # Hz
-    pulse_count=3,        # N импульсов
+    pulse_count=5,        # N импульсов
     pulses_t0_s=1e-6,         # стартовая задержка
     E_pulse_J=None,          # J
     # P_W зададим перебором ниже
@@ -62,19 +65,6 @@ def make_cfg(base_cfg: dict) -> Config:
     Иначе — кладём 'наследуемое' P_W = power_w.
     """
     return Config(**BASE_CFG)
-
-
-def _recompute_time_window_if_needed(cfg: Config) -> None:
-    """
-    Проверка корректности временного окна в случае последовательности оптических импульсов, заданных через количество импульсов cfg.pulse_count
-    и частоты повторения cfg.rep_rate_Hz
-    """
-    if cfg.Pulsed:
-        init_padding = np.maximum(cfg.pulses_t0_s, 3*cfg.pulse_duration_s)
-        end_padding = 3*cfg.pulse_duration_s
-        need = float(init_padding) + (float(cfg.pulse_count) - 1.0) / float(cfg.rep_rate_Hz) + float(end_padding)
-    if need > cfg.Twindow_s:
-        cfg.Twindow_s = need
 
 
 import math
@@ -172,7 +162,8 @@ def main():
 
         _recompute_mu_star_from_k(cfg)
 
-        _recompute_time_window_if_needed(cfg)
+        recompute_time_window_if_needed(cfg)  # сделает cfg.Twindow_s достаточно большим
+
 
         # 2) Имя файла
         p_str = str(p_w).replace(".", "p")
