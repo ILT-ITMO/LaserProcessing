@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 import config
-from conditions import initial_gaussian, laser_source_term
+from conditions import initial_gaussian, laser_source_term, OpticalSource
 import physical_params as phys
 
 class PINN(nn.Module):
@@ -20,7 +20,7 @@ class PINN(nn.Module):
         inputs = torch.stack([x_tensor, y_tensor, z_tensor, t_tensor], dim=1)
         return self.network(inputs)
 
-def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll: torch.Tensor, 
+def compute_pinn_loss(model, source, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll: torch.Tensor, 
                      t_coll: torch.Tensor, material, c_p=phys.SPECIFIC_HEAT, k=phys.THERMAL_CONDUCTIVITY, rho=phys.DENSITY):
 
     x_coll.requires_grad_(True)
@@ -28,10 +28,11 @@ def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll:
     z_coll.requires_grad_(True)
     t_coll.requires_grad_(True)
 
-    L_x, L_y, H_z, T_w = material
-    Fo_x = (k * T_w) / (rho * c_p * L_x**2) 
-    Fo_y = (k * T_w) / (rho * c_p * L_y**2)   
-    Fo_z = (k * T_w) / (rho * c_p * H_z*2)
+    # L_x, L_y, H_z, T_w = material
+    # Fo_x = (k * T_w) / (rho * c_p * L_x**2) 
+    # Fo_y = (k * T_w) / (rho * c_p * L_y**2)   
+    # Fo_z = (k * T_w) / (rho * c_p * H_z*2)
+    Fo_x, Fo_y, Fo_z = material
 
     u = model(x_coll, y_coll, z_coll, t_coll)
     u_t = torch.autograd.grad(u, t_coll, grad_outputs=torch.ones_like(u), create_graph=True)[0]
@@ -41,14 +42,16 @@ def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll:
     u_yy = torch.autograd.grad(u_y, y_coll, grad_outputs=torch.ones_like(u_y), create_graph=True)[0]
     u_z = torch.autograd.grad(u, z_coll, grad_outputs=torch.ones_like(u), create_graph=True)[0]
     u_zz = torch.autograd.grad(u_z, z_coll, grad_outputs=torch.ones_like(u_z), create_graph=True)[0]    
-    
-    source_term = (T_w / (rho * c_p * H_z)) * laser_source_term(x_coll, y_coll, z_coll, t_coll) # непонятно что делать с дельтой Т что это и как на нее домножить
+ 
+    source_term = source.forward(x_coll, y_coll, z_coll, t_coll)
+    # source_term = (T_w / (rho * c_p * H_z)) * laser_source_term(x_coll, y_coll, z_coll, t_coll, H_z, phys.MU) # непонятно что делать с дельтой Т что это и как на нее домножить
     loss_pde = torch.mean((u_t - (Fo_x * u_xx + Fo_y * u_yy + Fo_z * u_zz) - source_term) ** 2)  
 
     # Начальное условие
     t0 = torch.zeros_like(x_coll)
     u_ic = model(x_coll, y_coll, z_coll, t0)
-    u_ic_true = initial_gaussian(x_coll, y_coll, z_coll).unsqueeze(1)
+    # u_ic_true = initial_gaussian(x_coll, y_coll, z_coll).unsqueeze(1) # добавить нач темп и убрать гаус
+    u_ic_true = torch.zeros_like(u_ic) * 20.0
     loss_ic = torch.mean((u_ic - u_ic_true) ** 2) 
 
     # УСЛОВИЯ НЕЙМАНА на всех границах (нулевой поток тепла)
@@ -95,7 +98,7 @@ def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll:
             'loss_bc': loss_bc,
             'loss_ic': loss_ic}
 
-def train_pinn(model, material, num_epochs=200, lr=1e-3, device='cpu'):
+def train_pinn(model, source, material, num_epochs=200, lr=1e-3, device='cpu'):
     model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
@@ -115,11 +118,11 @@ def train_pinn(model, material, num_epochs=200, lr=1e-3, device='cpu'):
     history = []
     for epoch in tqdm(range(1, num_epochs+1)):
         optimizer.zero_grad()
-        loss = compute_pinn_loss(model, x_coll, y_coll, z_coll, t_coll, material)
+        loss = compute_pinn_loss(model, source, x_coll, y_coll, z_coll, t_coll, material)
         loss['loss'].backward()
         optimizer.step()
-        history.append(loss.item())
-        if epoch % 100 == 0:
-            print(f"Epoch {epoch}/{num_epochs}, Loss={loss['loss']:.3e}")
-            print(f"Loss_PDE={loss['loss_pde']:.3e} | Loss_BC={loss['loss_bc']:.3e} | Loss_IC={loss['loss_ic']:.3e}")
+        history.append(loss)
+        if epoch % 10 == 0:
+            print(f"Epoch {epoch}/{num_epochs}, Loss={loss['loss']}")
+            print(f"Loss_PDE={loss['loss_pde']} | Loss_BC={loss['loss_bc']} | Loss_IC={loss['loss_ic']}")
     return history

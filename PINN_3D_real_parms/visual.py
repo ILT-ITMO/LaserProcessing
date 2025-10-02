@@ -93,7 +93,7 @@ def visualize_absorption_depth_profile():
     plt.savefig('animations/absorption_depth_profile.png', dpi=150)
     plt.show()
 
-def create_animation(results, normalizer, title, filename):
+def create_animation(results, title, filename):
     """
     Создает анимацию температурного распределения в РАЗМЕРНЫХ величинах
     results - словарь с результатами в размерных величинах из postprocess_results()

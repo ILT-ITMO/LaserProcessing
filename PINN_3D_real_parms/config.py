@@ -2,7 +2,7 @@ import physical_params as phys
 from normalizer import QuartzNormalizer
 
 # Создаем нормализатор
-normalizer = QuartzNormalizer.norm
+# normalizer = QuartzNormalizer.norm
 
 # Безразмерные параметры для PINN
 # NUM_GAUSSIANS = phys.NUM_GAUSSIANS
