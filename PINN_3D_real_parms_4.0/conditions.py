@@ -27,108 +27,43 @@ def initial_gaussian(x_tensor, y_tensor, z_tensor, t0=1.0):
 
     return sum(gaussians)
 
-# def laser_source_term(x_tensor, y_tensor, z_tensor, t_tensor, 
-#                      amplitude=config.LASER_AMPLITUDE,
-#                      pulse_sigma=config.LASER_PULSE_SIGMA_NORM,
-#                      pulse_period=config.LASER_PULSE_PERIOD_NORM,
-#                      beam_sigma=config.LASER_SIGMA_NORM):
-#     """
-#     Функция лазерного источника тепла в безразмерных координатах
-#     с ГАУССОВЫМ временным профилем
-#     """
-    
-#     # Безразмерные координаты (нормированы на радиус пучка)
-#     # x_norm, y_norm уже безразмерные
-#     # z_norm = z_physical / CHARACTERISTIC_LENGTH
-    
-#     # 1. Пространственное распределение (движущийся гауссов пучок)
-#     scan_velocity_norm = config.LASER_SCAN_VELOCITY * config.CHARACTERISTIC_TIME / config.CHARACTERISTIC_LENGTH
-#     x_center = scan_velocity_norm * t_tensor  # Сканирование вдоль оси X
-    
-#     r2 = (x_tensor - x_center)**2 + y_tensor**2
-#     spatial_dist = amplitude * torch.exp(-2 * r2 / (beam_sigma**2))
-    
-#     # 2. Временное распределение (ГАУССОВОЕ вместо прямоугольного)
-#     t_mod = torch.fmod(t_tensor, pulse_period)
-#     # Гауссов импульс с центром в середине периода импульса
-
-#     # temporal_dist = torch.exp(-(t_mod - pulse_sigma * 3)**2 / (2 * pulse_sigma**2))
-#     temporal_dist = torch.exp(-(t_mod - pulse_period/2)**2 / (2 * pulse_sigma**2))
-
-#     temporal_dist = (1.0 / (pulse_sigma * math.sqrt(2 * math.pi))) * torch.exp(-(t_mod - pulse_period/2)**2 / (2 * pulse_sigma**2))
-
-#     # 3. Глубинное распределение (экспоненциальное поглощение по Бугеру-Ламберту)
-#     # Безразмерный коэффициент поглощения
-#     alpha_norm = config.MATERIAL_ABSORPTION * config.CHARACTERISTIC_LENGTH
-#     z_dist = torch.exp(-alpha_norm * z_tensor)
-    
-#     return spatial_dist * temporal_dist * z_dist
-
-# def laser_source_term(x_tensor, y_tensor, z_tensor, t_tensor, 
-#                      amplitude=config.LASER_AMPLITUDE,
-#                      pulse_sigma=config.LASER_PULSE_SIGMA_NORM,
-#                      pulse_period=config.LASER_PULSE_PERIOD_NORM,
-#                      beam_sigma=config.LASER_SIGMA_NORM):
-#     """
-#     Функция лазерного источника тепла в безразмерных координатах
-#     с ГАУССОВЫМ временным профилем дала хорошую температуру порядка 3000 К
-#     """
-    
-#     # Пространственное распределение (движущийся гауссов пучок)
-#     scan_velocity_norm = config.LASER_SCAN_VELOCITY * config.CHARACTERISTIC_TIME / config.CHARACTERISTIC_LENGTH
-#     x_center = scan_velocity_norm * t_tensor  # Сканирование вдоль оси X
-    
-#     r2 = (x_tensor - x_center)**2 + y_tensor**2
-#     spatial_dist = amplitude * torch.exp(-2 * r2 / (beam_sigma**2))
-    
-#     # ИСПРАВЛЕННОЕ временное распределение (ГАУССОВОЕ)
-#     t_mod = torch.fmod(t_tensor, pulse_period)
-#     # Центр импульса в середине периода
-#     pulse_center = pulse_period / 2
-#     temporal_dist = torch.exp(-(t_mod - pulse_center)**2 / (2 * pulse_sigma**2))
-    
-#     # Нормализация чтобы интеграл = 1 (опционально)
-#     # temporal_dist = temporal_dist / (pulse_sigma * math.sqrt(2 * math.pi))
-    
-#     # Глубинное распределение (экспоненциальное поглощение по Бугеру-Ламберту)
-#     alpha_norm = config.MATERIAL_ABSORPTION * config.CHARACTERISTIC_LENGTH
-#     z_dist = torch.exp(-alpha_norm * z_tensor)
-    
-#     return spatial_dist * temporal_dist * z_dist
-
-
 def laser_source_term(x_tensor, y_tensor, z_tensor, t_tensor, 
                      amplitude=config.LASER_AMPLITUDE,
                      pulse_sigma=config.LASER_PULSE_SIGMA_NORM,
                      pulse_period=config.LASER_PULSE_PERIOD_NORM,
-                     beam_sigma=config.LASER_SIGMA_NORM):
+                     beam_sigma=config.LASER_SIGMA_NORM,
+                     laser_mode=None):
     """
     Функция лазерного источника тепла в безразмерных координатах
-    с ГАУССОВЫМ временным профилем и СТАТИЧНЫМ пучком
-    """
+    Поддерживает два режима: импульсный (pulsed) и непрерывный (continuous)
     
-    # ПРОСТРАНСТВЕННОЕ РАСПРЕДЕЛЕНИЕ - СТАТИЧНЫЙ пучок в центре (0,0)
+    Args:
+        laser_mode: режим лазера ("pulsed" или "continuous"). Если None, берется из config
+    """
+    if laser_mode is None:
+        laser_mode = config.LASER_MODE
+    
+    # Пространственное распределение - СТАТИЧНЫЙ пучок в центре (0,0)
     r2 = x_tensor**2 + y_tensor**2  # центр всегда в (0,0)
     spatial_dist = amplitude * torch.exp(-r2 / (beam_sigma**2))
     
-    # ВРЕМЕННОЕ РАСПРЕДЕЛЕНИЕ - ГАУССОВ импульс
-    t_mod = torch.fmod(t_tensor, pulse_period)
+    # Временное распределение в зависимости от режима
+    if laser_mode == "continuous":
+        # Непрерывный режим - постоянный источник
+        temporal_dist = torch.ones_like(t_tensor)
+    else:
+        # Импульсный режим - гауссовы импульсы
+        t_mod = torch.fmod(t_tensor, pulse_period)
+        pulse_center = pulse_period / 2.0
+        temporal_dist = torch.exp(-(t_mod - pulse_center)**2 / (2 * pulse_sigma**2))
     
-    # Центр импульса точно в середине периода
-    pulse_center = pulse_period / 2.0
-    
-    # Гауссов импульс с правильным центром
-    temporal_dist = torch.exp(-(t_mod - pulse_center)**2 / (2 * pulse_sigma**2))
-    
-    # ГЛУБИННОЕ РАСПРЕДЕЛЕНИЕ
+    # Глубинное распределение (экспоненциальное поглощение по Бугеру-Ламберту)
     alpha_norm = config.MATERIAL_ABSORPTION * config.CHARACTERISTIC_LENGTH
     z_dist = torch.exp(-alpha_norm * z_tensor)
     
     source = spatial_dist * temporal_dist * z_dist
     
     return source
-
-
 
 def convert_to_physical_coords(x_norm, y_norm, z_norm, t_norm):
     """Конвертация безразмерных координат в физические"""
