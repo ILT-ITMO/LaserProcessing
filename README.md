@@ -1,8 +1,8 @@
 # LaserProcessing - PINN для 3D моделирования лазерного нагрева
 
 ![GitHub](https://img.shields.io/badge/GitHub-ILT--ITMO-blue)
-![Language](https://img.shields.io/badge/Language-Python-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=FFD43B)
+![C++](https://img.shields.io/badge/C++-00599C?logo=cplusplus&logoColor=white)
 ![Framework](https://img.shields.io/badge/Framework-PyTorch-red)
 
 ## 📋 Содержание
