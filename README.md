@@ -291,10 +291,14 @@ F(x,y,z,t) = A · exp(-r²/σ²_beam) · 1.0 · exp(-α·z)
    - Постоянное значение для непрерывного режима
    - Отображение на нормализованной шкале времени
 
+![Временной профиль при импульсном режиме](img_exemple/laser_pulse_profile_gaussian.png)
+
 2. **visualize_laser_spatial_profile()** - Пространственный профиль:
    - 2D гауссов профиль пучка F(x, y)
    - Contour plot интенсивности
    - Срезы по X и Y
+   
+![Временной профиль при импульсном режиме](img_exemple/laser_spatial_profile_continuous.png)
 
 3. **create_animation()** - 3D анимация:
    - Срезы поля температуры по Z-слоям
