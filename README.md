@@ -485,6 +485,10 @@ animations/
 ├── pinn_solution_continuous.gif     # Анимация поля температуры
 ├── laser_pulses.png                 # Профиль импульсов
 └── laser_spatial_profile.png        # Пространственный профиль
+
+saved_models/
+├── pinn_model.pth                   # Сохраненная модель для дальнейшего использования
+
 ```
 
 ---
