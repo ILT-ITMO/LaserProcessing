@@ -248,10 +248,9 @@ def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3,
 
 Реализация начальных условий, граничных условий и источника лазера.
 
-**Начальное условие** (гаусс):
+**Начальное условие**:
 ```python
-def initial_gaussian(x, y, z, t0=1.0):
-    # Многогаусс источник с параметрами NUM_GAUSSIANS, GAUSSIAN_SPACING, SIGMA0
+Комнатная температура
 ```
 
 **Источник лазера** - поддерживает два режима:
@@ -611,7 +610,13 @@ plt.show()
 
 ## 📚 Ссылки и ресурсы
 
-### Научные статьи
+### Научные статьи группы в рамках проекта
+```
+Kokhanovskiy A.Y., Dorogin L.M., Egorova X.A., Antonov E.V.,
+Sinev D.A. Progress and Perspectives of Physics-Informed Neural Networks 
+for Tribological Applications with Multiphysics Awareness//Reviews on Advanced Materials and Technologies, 
+2025, Vol. 7, No. 2, pp. 88-104
+```
 
 
 ### Инструменты и библиотеки
