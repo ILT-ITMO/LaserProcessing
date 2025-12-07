@@ -432,7 +432,7 @@ python run_app.py
 # - Сохраняем конфигурацию в JSON
 ```
 
-### Опция 4: Загрузка и использование обученной модели
+### Опция 4: Загрузка и использование обученной модели (в данном случае для непрерывного режима)
 
 ```python
 import torch
@@ -441,7 +441,7 @@ from saving_models import load_model
 import config
 
 # Загружаем модель
-model, checkpoint = load_model('path/to/model.pth', device='cpu')
+model, checkpoint = load_model('pinn_model_continuous.pth', device='cpu')
 
 # Загружаем конфигурацию
 config.CONFIG.load_from_json('config.json')
