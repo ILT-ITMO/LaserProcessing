@@ -114,7 +114,7 @@ Surface Optimizer
 
 1. **Для работы с физическими моделями** перейдите в [`solvers`](./solvers) — здесь находятся инструкции по запуску солверов и генерации данных.
 
-2. **Для генерации датасетов** переключитесь на ветку [`data_base`](https://github.com/ILT-ITMO/LaserProcessing/tree/main/data_base) — там описаны алгоритмы подготовки данных.
+2. **Для интеграции датасетов** переключитесь на ветку [`data_base`](https://github.com/ILT-ITMO/LaserProcessing/tree/main/data_base) — там описаны алгоритмы подготовки данных и работы с ними.
 
 3. **Для запуска нейросети** используйте ветку [`PINN_3D_real_parms`](https://github.com/ILT-ITMO/LaserProcessing/tree/main/PINN_3D_real_parms) — здесь находятся модели и инструкции по обучению.
 
