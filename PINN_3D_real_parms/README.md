@@ -612,10 +612,9 @@ plt.show()
 
 ### Научные статьи группы в рамках проекта
 ```
-Kokhanovskiy A.Y., Dorogin L.M., Egorova X.A., Antonov E.V.,
-Sinev D.A. Progress and Perspectives of Physics-Informed Neural Networks 
-for Tribological Applications with Multiphysics Awareness//Reviews on Advanced Materials and Technologies, 
-2025, Vol. 7, No. 2, pp. 88-104
+Kokhanovskiy A.Y., Dorogin L.M., Egorova X.A., Antonov E.V., Sinev D.A.
+Progress and Perspectives of Physics-Informed Neural Networks for Tribological Applications with Multiphysics
+Awareness//Reviews on Advanced Materials and Technologies, 2025, Vol. 7, No. 2, pp. 88-104
 ```
 
 
