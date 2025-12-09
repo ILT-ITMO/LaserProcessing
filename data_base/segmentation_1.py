@@ -4,27 +4,34 @@ from PIL import Image
 import os
 
 class Segmentation():
+    """
+    This class performs image segmentation tasks, including applying masks based on contrast and converting images to BLOB format.
+    
+        Attributes:
+            None
+    
+        Class Methods:
+        - segmentation: Applies a mask to the input image based on its contrast, preparing it for database storage by converting it to BLOB format.
+        - calculate_percentile_brightness: Calculates the percentile brightness of an image, allowing for calculation from either the darker or brighter side.
+        - crop_center_square: Crops the center square region from an image.
+    """
+
     def segmentation(img, black_lavel, type_='dark'):
 
         """
-        Накладывает маску на полученное изображения, используя его контрастность. Готовит файл
-        к отправке в базу данных, конвертируя jpg/png в BLOB
-    
-        Параметры
-        ----------
-        img : Путь до изображения : str 
-    
-        black_lavel : уровень черного, по которому будет производиться сегментация. 
-                      Число от 0 до 255, где 0 - полностью черное, 255 - полностью белое : int
+        Performs image segmentation based on contrast, preparing the image for database storage by converting it to a BLOB format.
         
-        type_: тип сегментации, dark - выделение темных объектов. != dark - выделение светлых: str 
-            
-        Результат
-        -------
-        width : ширина выделенного объекта в пикселях : numpy.int32
+        Args:
+            img (str): Path to the image file.
+            black_lavel (int): Threshold value for segmentation, ranging from 0 to 255.
+            type_ (str, optional): Segmentation type. 'dark' for highlighting dark objects, otherwise highlights bright objects. Defaults to 'dark'.
         
-        blob_data : исходное изображение с наложенной маской сегментации, 
-                    переведенное в формат BLOB : bytes
+        Returns:
+            tuple: A tuple containing the width of the segmented object in micrometers, the segmented image as a PIL object, and the average width and standard deviation of the segmented object.
+                - width (float): Width of the segmented object in micrometers.
+                - image_pil (PIL.Image.Image): Segmented image as a PIL object.
+                - avg_width (float): Average width of the segmented object in micrometers.
+                - std_width (float): Standard deviation of the segmented object's width in micrometers.
         """
             
         # Чтение изображения
@@ -225,6 +232,22 @@ class Segmentation():
         return (width, image_pil, avg_width[0], avg_width[1])
 
     def calculate_percentile_brightness(image_path, procentage: int, type_='dark'):
+        """
+        Calculates a specified percentile of image brightness.
+        
+        Args:
+            image_path (str or numpy.ndarray): The path to the image file or a numpy array representing the image.
+            procentage (int): The percentile value to calculate (0-100).
+            type_ (str, optional):  If 'dark', calculates the percentile from the darker side of the image. 
+                                    Otherwise, calculates from the brighter side. Defaults to 'dark'.
+        
+        Returns:
+            float: The calculated percentile brightness value.
+        
+        This method determines the brightness level that corresponds to a given percentile within the image's pixel intensity distribution. 
+        By default, it finds the brightness value below which a specified percentage of pixels fall (darker side). 
+        When `type_` is not 'dark', it effectively calculates the percentile from the brighter side of the image by inverting the percentage value.
+        """
         # Открываем изображение и конвертируем в черно-белое
         try:
             image = Image.open(image_path).convert('L')
@@ -239,6 +262,15 @@ class Segmentation():
         return percentile
 
     def crop_center_square(image_path):
+        """
+        Crops the center square from an image, ensuring consistent input for subsequent analysis.
+        
+        Args:
+            image_path (str): The path to the image file.
+        
+        Returns:
+            numpy.ndarray: A NumPy array representing the cropped image.
+        """
         # Открываем изображение
         img = Image.open(image_path)
 

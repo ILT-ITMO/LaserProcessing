@@ -9,6 +9,24 @@ from src.lcp import LcpSolver
 
 
 def freq(n, d):
+    """
+    Computes the magnitude of the frequency spectrum for a 2D signal.
+    
+    Calculates the frequency components present in a signal based on its
+    dimensions and sampling distance. This is useful for analyzing the
+    spatial frequencies within the signal, which can reveal important
+    information about its structure and characteristics.
+    
+    Args:
+        n (int or list/tuple of int): Dimensions of the signal.  A single
+            integer represents a 1D signal, while a list/tuple of two
+            integers represents a 2D signal (rows, columns).
+        d (float): Sample distance.
+    
+    Returns:
+        ndarray: The magnitude of the frequency spectrum.  Represents the
+            strength of each frequency component in the signal.
+    """
     if len(n) == 1:
         return rfftfreq(n[0], d)
     xs = rfftfreq(n[1], d)
@@ -18,6 +36,23 @@ def freq(n, d):
 
 
 def layer_factor(poisson, freq, thickness):
+    """
+    Calculates the layer factor to determine how a wave propagates through a material layer.
+    
+    This function computes the layer factor based on the material's properties (Poisson's ratio), 
+    the wave's frequency, and the layer's thickness. It's designed to accurately model wave 
+    behavior, particularly in scenarios involving laser-material interactions, by accounting 
+    for potential numerical issues and specific layer conditions.
+    
+    Args:
+        poisson (float): Poisson's ratio of the material, representing its resistance to deformation.
+        freq (float): Frequency of the wave, determining its oscillatory rate.
+        thickness (float): Thickness of the material layer, influencing wave propagation.
+    
+    Returns:
+        numpy.ndarray: The calculated layer factor, a value between 0 and 1 that indicates 
+                       the extent to which the wave is affected by the layer.
+    """
     # https://doi.org/10.1093/qjmam/4.1.94
     if thickness == np.inf:
         return 1.0
@@ -32,6 +67,18 @@ def layer_factor(poisson, freq, thickness):
 
 
 def green_func_fourier(young, poisson, freq, thickness=np.inf):
+    """
+    Computes the Green's function in Fourier space for a layered medium, representing the material's response to harmonic excitation.
+    
+    Args:
+        young (float): Young's modulus of the material.
+        poisson (float): Poisson's ratio of the material.
+        freq (float): Frequency of the excitation.
+        thickness (float, optional): Thickness of the layer. Defaults to infinity.
+    
+    Returns:
+        numpy.ndarray: The Green's function in Fourier space, representing the displacement field due to a point force. The first element is set to 0.0 to avoid singularities.
+    """
     with np.errstate(divide='ignore'):
         result = 2 * (1 - poisson ** 2) / (young * 2 * pi * freq)
     result.flat[0] = 0.0
@@ -39,6 +86,22 @@ def green_func_fourier(young, poisson, freq, thickness=np.inf):
 
 
 def gap_to_z(green_1, green_2, surface_1, gap):
+    """
+    Transforms the input surface based on Green's functions and a gap function, then calculates the difference between the transformed surface and the original gap.
+    
+    Args:
+        green_1 (array_like): The first Green's function.
+        green_2 (array_like): The second Green's function.
+        surface_1 (array_like): The input surface data.
+        gap (array_like): The gap function representing a spatial distribution.
+    
+    Returns:
+        tuple: A tuple containing:
+            - The difference between the transformed surface and the gap (array_like).
+            - The transformed surface (array_like).
+    
+    The method leverages Green's functions to modify the input surface, effectively modeling a physical response to an external influence represented by the gap function. This transformation is performed in the Fourier domain for efficiency, and the final result represents a refined surface accounting for the interaction between the initial surface, the gap, and the properties defined by the Green's functions.
+    """
     with np.errstate(invalid='ignore'):
         a = 1 / (1 + green_1 / green_2)
     a.flat[0] = 0.0
@@ -47,6 +110,16 @@ def gap_to_z(green_1, green_2, surface_1, gap):
 
 
 def inv(x):
+    """
+    Computes the inverse of an array, handling potential division by zero errors that can occur during data processing.
+    
+    Args:
+        x (numpy.ndarray): The input array.
+    
+    Returns:
+        numpy.ndarray: An array containing the inverse of the input array,
+        with division by zero resulting in 0 to maintain numerical stability.
+    """
     with np.errstate(divide='ignore'):
         x = 1 / x
     return np.nan_to_num(x, 0, 0, 0)
@@ -67,6 +140,38 @@ def solve(
         log_output=False,
         dump_dir=None,
 ):
+    """
+    Solves the contact problem between two elastic bodies under external pressure.
+    
+    This method determines the deformation and stress distribution resulting from the interaction
+    of two elastic bodies subjected to a given pressure, leveraging Fourier transforms and a 
+    Linear Complementarity Problem (LCP) solver. The solution provides insights into the 
+    contact mechanics of the system.
+    
+    Args:
+        pressure: The external pressure applied to the bodies.
+        length: The length of the bodies.
+        surface_1: The shape of the first body's surface.
+        E1: Young's modulus of the first body.
+        nu1: Poisson's ratio of the first body.
+        E2: Young's modulus of the second body.
+        nu2: Poisson's ratio of the second body.
+        thickness_2: The thickness of the second body (default is infinity).
+        maxiter: The maximum number of iterations for the LCP solver (default is 1000000).
+        tol: The tolerance for the LCP solver (default is 1e-8).
+        shear_str: The shear strength (default is None).
+        use_cuda: Whether to use CUDA for the LCP solver (default is False).
+        initial_guess: The initial guess for the gap (default is None).
+        log_output: Whether to print log output (default is False).
+        dump_dir: The directory to dump the results to (default is None).
+    
+    Returns:
+        A dictionary containing the results of the solution, including the mean gap,
+        relative contact area, maximum stress, stress distribution, deformed surfaces,
+        gap, and number of iterations. If shear strength is provided, the friction
+        coefficient is also included. If a dump directory is provided, the results
+        are saved to files in that directory.
+    """
     shape = surface_1.shape
     f = freq(shape, length / shape[-1])
     ft_green_1 = green_func_fourier(E1, nu1, f)

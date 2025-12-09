@@ -1,0 +1,6 @@
+# Data Processing
+## Overview
+This module provides functionalities for data extraction from databases, image segmentation and analysis, and profile data processing. It includes tools for sorting files, automating profile analysis, and managing microscope image segmentation. The module utilizes SQLite databases and relies on libraries like Pandas for data manipulation.
+
+## Purpose
+This module serves to extract, process, and analyze data generated from laser-based experiments, specifically focusing on microscope images and corresponding profiles. It aims to provide a pipeline for retrieving data from a database, segmenting images to identify regions of interest, automatically analyzing profile data related to laser interactions, and storing/visualizing the results. Core features include database interaction, automated image segmentation, and tools for precise profile analysis, contributing to a broader understanding of laser-material interactions and characterization of laser-induced processes.

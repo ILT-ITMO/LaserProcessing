@@ -14,7 +14,10 @@ pn.extension(design='material', loading_indicator=True)
 # ============================================================================
 
 class LaserConfigApp(param.Parameterized):
-    """Класс приложения для настройки конфигурации лазерного нагрева"""
+    """
+    Класс приложения для настройки конфигурации лазерного нагрева
+    """
+
     
     # === ПАРАМЕТРЫ ЛАЗЕРА ===
     laser_mode = param.Selector(
@@ -176,13 +179,46 @@ class LaserConfigApp(param.Parameterized):
     status_message = param.String("Готово", label="Статус")
     
     def __init__(self, **params):
+        """
+        Initializes the LaserConfigApp object.
+        
+        This constructor sets up the application by initializing the base class, 
+        loading the configuration, creating the user interface elements, and 
+        determining the starting values for calculations. This ensures the application 
+        is ready to process laser-related data and simulations.
+        
+        Args:
+            self: The LaserConfigApp instance.
+            **params: Keyword arguments passed to the superclass constructor.
+        
+        Initializes the following class fields:
+            config: Stores the application's configuration settings.
+            widgets: Stores the GUI widgets for user interaction.
+            initial_parameters: Stores the initial values used in calculations.
+        
+        Returns:
+            None
+        """
         super().__init__(**params)
         self.load_current_config()
         self.create_widgets()
         self.calculate_initial_parameters()
     
     def load_current_config(self):
-        """Загружает текущие значения из конфигурации"""
+        """
+        Loads the current configuration parameters for the laser processing simulation.
+        
+        This method retrieves and sets the simulation parameters from the configuration file, 
+        including laser properties, material properties, and training settings. 
+        These parameters are essential for defining the simulation environment and 
+        controlling the behavior of the laser-material interaction model.
+        
+        Args:
+            self: The LaserConfigApp instance.
+        
+        Returns:
+            None
+        """
         try:
             self.laser_mode = config.LASER_MODE
             self.laser_wavelength = config.LASER_WAVELENGTH
@@ -236,7 +272,17 @@ class LaserConfigApp(param.Parameterized):
     # ============================================================================
     
     def create_widgets(self):
-        """Создает все виджеты интерфейса"""
+        """
+        Creates and arranges the user interface widgets for configuring laser processing parameters.
+        
+        This method constructs the main layout of the application, including a title pane, tabbed sections for different configuration aspects (laser, material, PINN settings, training parameters, calculations, and controls), and a status bar for displaying messages.  These widgets are organized to allow users to define and adjust the simulation setup.
+        
+        Args:
+            self:  The LaserConfigApp instance.
+        
+        Returns:
+            None: This method modifies the object's attributes (self.title_pane, self.tabs, self.status_bar, self.layout) directly and doesn't return a value.
+        """
         
         # Заголовок приложения
         self.title_pane = pn.pane.HTML("""
@@ -285,7 +331,9 @@ class LaserConfigApp(param.Parameterized):
         )
     
     def create_laser_tab(self):
-        """Создает вкладку настроек лазера"""
+        """
+        Создает вкладку настроек лазера, позволяющую пользователю конфигурировать параметры лазерного излучения, такие как режим работы (импульсный или непрерывный), длина волны, мощность и другие характеристики. Вкладка предоставляет интерактивные элементы управления для изменения параметров и отображает подсказки для типичных значений.
+        """
         
         # Виджет выбора режима
         mode_selector = pn.widgets.RadioButtonGroup(
@@ -372,7 +420,17 @@ class LaserConfigApp(param.Parameterized):
         )
     
     def create_material_tab(self):
-        """Создает вкладку настроек материала"""
+        """
+        Creates a tab for configuring material properties.
+        
+        This tab provides a user interface to adjust key material parameters used in laser-material interaction simulations. These parameters define how the material responds to laser heating, influencing the accuracy of thermal modeling.
+        
+        Args:
+            self:  The LaserConfigApp instance.
+        
+        Returns:
+            A Panel layout representing the material configuration tab. This layout includes input widgets for density, specific heat, thermal conductivity, absorption, reflectivity, and initial temperature, along with reference information about typical material properties.
+        """
         
         # Сетка параметров материала
         material_grid = pn.GridSpec(ncols=2, sizing_mode='stretch_width')
@@ -420,7 +478,19 @@ class LaserConfigApp(param.Parameterized):
         )
     
     def create_pinn_tab(self):
-        """Создает вкладку настроек PINN"""
+        """
+        Creates a configuration tab for PINN settings.
+        
+        This tab allows users to adjust parameters related to the Physics-Informed Neural Network (PINN) model, including laser amplitude, collocation grid resolution, and visualization grid resolution. These settings are crucial for accurately simulating and analyzing laser-induced heat transfer.
+        
+        Args:
+            self:  An instance of the LaserConfigApp class.
+        
+        Returns:
+            pn.Column: A Panel layout containing the PINN configuration widgets, 
+                       organized into cards for basic parameters, collocation grid, 
+                       and visualization grid.
+        """
         
         # Карточка с основными параметрами PINN
         basic_card = pn.Card(
@@ -472,7 +542,18 @@ class LaserConfigApp(param.Parameterized):
         )
     
     def create_training_tab(self):
-        """Создает вкладку настроек обучения"""
+        """
+        Creates a training settings tab with adjustable parameters for the simulation.
+        
+        The tab allows users to configure core training settings like the number of epochs and learning rate, as well as adjust the weights assigned to different loss functions representing physical constraints (PDE, initial conditions, boundary conditions). This configuration is crucial for effectively training models to accurately simulate laser-material interactions.
+        
+        Args:
+            self:  The LaserConfigApp instance.
+        
+        Returns:
+            pn.Column: A Panel layout representing the training settings tab, 
+                       containing widgets for parameter adjustment and informative tooltips.
+        """
         
         # Основные параметры обучения
         basic_params = pn.Row(
@@ -518,7 +599,20 @@ class LaserConfigApp(param.Parameterized):
         )
     
     def create_loss_card(self, title, color, parameter, description):
-        """Создает карточку для веса loss функции"""
+        """
+        Создает карточку для веса loss функции с использованием интерактивного слайдера.
+        
+        Args:
+            title (str): Заголовок карточки, отображаемый в верхней части.
+            color (str): Цвет карточки и элементов управления.
+            parameter (pn.param.Parameterized): Параметр, для которого создается слайдер.
+            description (str): Описание параметра, отображаемое под заголовком.
+        
+        Returns:
+            pn.Card: Карточка Panel с заголовком, описанием и слайдером для настройки веса loss функции.
+        
+        Метод создает визуальный элемент управления для настройки веса функции потерь, позволяя пользователю интерактивно изменять значение параметра с помощью слайдера. Это необходимо для точной настройки процесса обучения модели и достижения оптимальных результатов.
+        """
         return pn.Card(
             pn.Column(
                 pn.pane.HTML(f"""
@@ -540,7 +634,15 @@ class LaserConfigApp(param.Parameterized):
         )
     
     def create_calculations_tab(self):
-        """Создает вкладку с расчетными параметрами"""
+        """
+        Создает вкладку с результатами расчетов ключевых параметров, характеризующих взаимодействие лазера с материалом.
+        
+        Args:
+            self: Экземпляр класса LaserConfigApp, содержащий данные и методы для конфигурации и управления приложением.
+        
+        Returns:
+            pn.Column: Панель, содержащая результаты расчетов (характерная длина, время, температура, пиковая интенсивность), кнопку для пересчета параметров и информационную панель с пояснениями к расчетам.
+        """
         
         # Карточки с результатами расчетов
         results_grid = pn.GridBox(
@@ -587,7 +689,18 @@ class LaserConfigApp(param.Parameterized):
         )
     
     def create_result_card(self, title, value_param, color, unit):
-        """Создает карточку для отображения результата"""
+        """
+        Создает карточку для отображения результата измерений или вычислений.
+        
+        Args:
+            title (str): Заголовок карточки, описывающий отображаемый параметр.
+            value_param (str): Значение параметра для отображения.
+            color (str): Цвет карточки, используемый для визуального выделения.
+            unit (str): Единица измерения параметра.
+        
+        Returns:
+            pn.Card: Объект карточки Panel, готовый к отображению.
+        """
         return pn.Card(
             pn.Column(
                 pn.pane.HTML(f"""
@@ -611,7 +724,15 @@ class LaserConfigApp(param.Parameterized):
         )
     
     def create_controls_tab(self):
-        """Создает вкладку управления"""
+        """
+        Создает вкладку управления, содержащую кнопки для выполнения различных действий с конфигурацией лазера, таких как расчет параметров, генерация JSON, сохранение в файл и применение изменений. Также включает поле для отображения JSON конфигурации и панель быстрых действий для выбора предустановленных шаблонов.
+        
+        Args:
+            None
+        
+        Returns:
+            pn.Column: Панель с элементами управления конфигурацией лазера.
+        """
         
         # Кнопки действий
         buttons_row = pn.Row(
@@ -712,7 +833,15 @@ class LaserConfigApp(param.Parameterized):
     # ============================================================================
     
     def calculate_parameters(self, event=None):
-        """Рассчитывает все производные параметры"""
+        """
+        Рассчитывает ключевые параметры, необходимые для моделирования тепловых процессов, возникающих при лазерном воздействии на материал.
+        
+        Args:
+            event (optional):  Event object, likely triggered by a UI element. Not used in the calculation itself. Defaults to None.
+        
+        Returns:
+            None: The method updates the object's attributes with calculated values and updates the status message.
+        """
         try:
             # Временные вычисления
             if self.laser_mode == 'continuous':
@@ -751,11 +880,30 @@ class LaserConfigApp(param.Parameterized):
             self.update_status(f"❌ Ошибка расчета: {str(e)}", "danger")
     
     def calculate_initial_parameters(self):
-        """Рассчитывает начальные параметры"""
+        """
+        Рассчитывает начальные параметры, необходимые для последующей обработки и моделирования.
+        
+        Args:
+            self: Экземпляр класса LaserConfigApp, содержащий конфигурацию и данные.
+        
+        Returns:
+            None: Метод изменяет состояние объекта, вычисляя и сохраняя параметры внутри него.
+        """
         self.calculate_parameters()
     
     def generate_json(self, event=None):
-        """Генерирует JSON конфигурацию"""
+        """
+        Генерирует JSON конфигурацию на основе внутренних параметров приложения.
+        
+        Args:
+            event (optional): Event object, not used in the current implementation. Defaults to None.
+        
+        Returns:
+            None: The generated JSON configuration is stored in the `self.json_output` attribute.
+                  Updates the application status to indicate success or failure.
+        
+        The method creates a JSON representation of the application's configuration, allowing for easy storage or transfer of settings. This is crucial for reproducibility and sharing of experimental setups or simulation parameters.
+        """
         try:
             config = self.generate_config_dict()
             config_str = json.dumps(config, indent=2, default=str)
@@ -765,7 +913,20 @@ class LaserConfigApp(param.Parameterized):
             self.update_status(f"❌ Ошибка генерации JSON: {str(e)}", "danger")
     
     def generate_config_dict(self):
-        """Генерирует словарь конфигурации"""
+        """
+        Generates a dictionary containing all the necessary configuration parameters for the laser processing simulation.
+        
+        This dictionary encapsulates parameters related to the laser source, material properties, 
+        PINN settings, and training configurations, providing a comprehensive setup for the simulation.
+        The structure allows for easy access and modification of individual parameters.
+        
+        Args:
+            self: An instance of the LaserConfigApp class, providing access to the configuration attributes.
+        
+        Returns:
+            dict: A dictionary containing the complete configuration for the laser processing simulation, 
+                  organized into 'laser', 'material', 'pinn', and 'training' sections.
+        """
         return {
             "laser": {
                 "wavelength": self.laser_wavelength,
@@ -818,7 +979,17 @@ class LaserConfigApp(param.Parameterized):
         }
     
     def save_to_file(self, event=None):
-        """Сохраняет конфигурацию в файл"""
+        """
+        Сохраняет текущую конфигурацию лазера в файл.
+        
+        Args:
+            event (optional): Event object, likely from a GUI framework. Not used directly in the function's logic. Defaults to None.
+        
+        Returns:
+            None
+        
+        The method ensures the configuration is in JSON format, generates a unique filename incorporating the laser mode, and then writes the JSON data to the file. This allows for persistent storage and retrieval of laser settings for later use or replication of experiments.
+        """
         try:
             if not self.json_output:
                 self.generate_json()
@@ -835,7 +1006,20 @@ class LaserConfigApp(param.Parameterized):
             self.update_status(f"❌ Ошибка сохранения: {str(e)}", "danger")
     
     def reset_to_defaults(self, event=None):
-        """Сбрасывает все значения к настройкам по умолчанию"""
+        """
+        Сбрасывает все параметры конфигурации к предопределенным значениям по умолчанию.
+        
+        Это необходимо для обеспечения воспроизводимости результатов и предоставления отправной точки для новых симуляций.
+        Метод восстанавливает параметры лазера, материала, PINN и обучения к их начальным значениям,
+        после чего пересчитывает производные параметры и обновляет статус приложения.
+        
+        Args:
+            event (optional): Объект события, связанный с действием пользователя (например, нажатием кнопки).
+                              Не используется напрямую в логике метода. Defaults to None.
+        
+        Returns:
+            None
+        """
         try:
             # Сброс параметров лазера
             self.laser_mode = 'continuous'
@@ -877,7 +1061,15 @@ class LaserConfigApp(param.Parameterized):
             self.update_status(f"❌ Ошибка сброса: {str(e)}", "danger")
     
     def apply_config(self, event=None):
-        """Применяет текущую конфигурацию к глобальному объекту"""
+        """
+        Применяет текущую конфигурацию, генерируя словарь параметров и обновляя глобальные настройки для обеспечения согласованности системы.
+        
+        Args:
+            event (optional): Event object, typically used in GUI frameworks. Defaults to None.
+        
+        Returns:
+            None
+        """
         try:
             # Создаем временный конфиг
             config_dict = self.generate_config_dict()
@@ -892,13 +1084,31 @@ class LaserConfigApp(param.Parameterized):
             self.update_status(f"❌ Ошибка применения конфигурации: {str(e)}", "danger")
     
     def update_status(self, message, alert_type="info"):
-        """Обновляет статусное сообщение"""
+        """
+        Updates the status message displayed in the application.
+        
+        Args:
+            message (str): The status message to display.
+            alert_type (str, optional): The type of alert for the status message 
+                ("info", "warning", "error", etc.). Defaults to "info".
+        
+        Returns:
+            None
+        """
         self.status_message = message
         self.status_bar.alert_type = alert_type
         self.status_bar.object = message
     
     def show(self):
-        """Отображает интерфейс"""
+        """
+        Displays the main user interface layout.
+        
+        Args:
+            self:  The LaserConfigApp instance.
+        
+        Returns:
+            QtWidgets.QWidget: The main layout of the application, containing the user interface elements.
+        """
         return self.layout
 
 # ============================================================================
