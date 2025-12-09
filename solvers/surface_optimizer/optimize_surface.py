@@ -12,6 +12,20 @@ from mlwrapper1 import mlwrapper1
 
 
 def fourier_series(x, period, a_coeffs, b_coeffs):
+    """
+    Computes the Fourier series approximation of a function.
+    
+    Calculates the Fourier series approximation using provided cosine and sine coefficients to reconstruct a periodic signal. This is useful for representing functions as a sum of simpler trigonometric functions, enabling analysis and manipulation in the frequency domain.
+    
+    Args:
+        x (numpy.ndarray): The input values at which to evaluate the Fourier series.
+        period (float): The period of the function.
+        a_coeffs (numpy.ndarray): The cosine coefficients of the Fourier series.
+        b_coeffs (numpy.ndarray): The sine coefficients of the Fourier series.
+    
+    Returns:
+        numpy.ndarray: The computed Fourier series approximation at the given input values.
+    """
     n_cos = np.arange(len(a_coeffs))
     cos_terms = np.cos(2 * np.pi * n_cos[:, None] * x[None, :] / period)
 
@@ -22,6 +36,19 @@ def fourier_series(x, period, a_coeffs, b_coeffs):
 
 
 def plot_objective_history(path):
+    """
+    Plots the objective function's history from a CSV file.
+    
+    This method visualizes how the optimization process improved over time 
+    by plotting the objective function value at each generation. 
+    This allows for assessment of the optimization's convergence and performance.
+    
+    Args:
+        path (str): The path to the directory containing the 'best_per_epoch.csv' file.
+    
+    Returns:
+        None
+    """
     data = np.genfromtxt(path / 'best_per_epoch.csv', names=True,
                          delimiter=',')
 
@@ -42,6 +69,18 @@ def plot_objective_history(path):
 
 
 def plot_surfaces_and_stress(path):
+    """
+    Plots the optimized and elastic body surfaces, along with the stress distribution.
+    
+    This method visualizes the results of a simulation, displaying the optimized and elastic body surfaces 
+    and the corresponding stress distribution to assess the impact of optimization.
+    
+    Args:
+        path (str): The path to the directory containing the 'stress.txt' file.
+    
+    Returns:
+        None
+    """
     x, z_1, z_2, stress = np.loadtxt(path / 'stress.txt')
     z_1[z_1 != z_2] = np.nan
 
@@ -69,6 +108,20 @@ def plot_surfaces_and_stress(path):
 
 def _save_best(epoch: int, best_value: float, stress: float, stiffness: float,
                best_weights: np.ndarray, path: str):
+    """
+    Saves the best model weights and associated metrics to a CSV file for later analysis and comparison.
+    
+    Args:
+        epoch (int): The epoch number during training when the best performance was achieved.
+        best_value (float): The best objective value (e.g., loss) obtained during training.
+        stress (float): The stress value associated with the best model.
+        stiffness (float): The stiffness value associated with the best model.
+        best_weights (np.ndarray): The weights of the model that yielded the best performance.
+        path (str): The file path to the CSV file where the data will be saved.
+    
+    Returns:
+        None
+    """
     write_header = not os.path.exists(path)
     with open(path, mode="a", newline="") as f:
         w = csv.writer(f)
@@ -83,6 +136,23 @@ def _save_best(epoch: int, best_value: float, stress: float, stiffness: float,
 
 
 def random_mean(size, high, seed):
+    """
+    Generates an array of random numbers with a mean close to zero.
+    
+    This method creates a NumPy array of a specified size, filled with random
+    numbers drawn from a uniform distribution. It constructs the array by
+    combining positive and negative random values to center the distribution
+    around zero, which is useful for initializing simulations or creating
+    balanced datasets.
+    
+    Args:
+        size (int): The desired size of the array.
+        high (float): The upper bound for the random numbers (exclusive).
+        seed (int): The seed for the random number generator.
+    
+    Returns:
+        numpy.ndarray: A NumPy array of random numbers.
+    """
     rng = np.random.default_rng(seed)
     return np.concatenate((rng.uniform(0, high, 1),
                            rng.uniform(-high, high, size - 1)))
@@ -90,6 +160,23 @@ def random_mean(size, high, seed):
 
 def optimize_trials(num_weights, num_trials, mean_rng_range, save_dir, seed=0,
                     **kwargs):
+    """
+    Runs multiple optimization trials to find optimal surface configurations and saves the results for analysis.
+    
+    This method executes a series of optimization runs, each with a randomly generated starting point, and stores the configuration details and sorted results in a specified directory. This allows for comparison and selection of the best performing configurations.
+    
+    Args:
+        num_weights: The number of weights used in the optimization process.
+        num_trials: The number of independent optimization trials to perform.
+        mean_rng_range: The range from which random means are generated for each trial.
+        save_dir: The directory where the configuration and results will be saved.
+        seed: The random seed for reproducibility. Defaults to 0.
+        kwargs: Additional keyword arguments to be passed to the `optimize_surface` function,
+            allowing for customization of the optimization process.
+    
+    Returns:
+        None
+    """
     path = pathlib.Path(save_dir)
 
     shutil.rmtree(path, ignore_errors=True)
@@ -121,6 +208,23 @@ def optimize_trials(num_weights, num_trials, mean_rng_range, save_dir, seed=0,
 
 
 def make_surface(weights, length, num_points, even_func=False):
+    """
+    Creates a surface using a Fourier series.
+    
+    Calculates the values of a Fourier series at given points to generate a surface representation.
+    This allows for the creation of complex shapes and patterns based on a set of weighted frequencies.
+    The function leverages cosine and sine terms, configurable via the `even_func` parameter, to define the surface.
+    
+    Args:
+        weights (list): The weights (coefficients) for the Fourier series.  Determines the amplitude of each frequency component.
+        length (float): The total length of the surface along the x-axis.
+        num_points (int): The number of points to sample along the surface.  Higher values result in a smoother surface.
+        even_func (bool, optional): If True, only cosine terms are used, resulting in an even function symmetric around the y-axis. 
+                                     If False, both cosine and sine terms are used for a more general function. Defaults to False.
+    
+    Returns:
+        numpy.ndarray: A NumPy array containing the calculated surface values (y-coordinates) for each x-coordinate.
+    """
     x = np.linspace(-length / 2, length / 2, num_points, endpoint=False)
     if even_func:
         a_coeffs = np.concatenate(([0.0], weights))
@@ -136,6 +240,31 @@ def make_surface(weights, length, num_points, even_func=False):
 def objective(stress_weight, num_points, weights, pressure, length, young,
               poisson,
               tol, even_func):
+    """
+    Calculates an objective function value based on stress and stiffness derived from a mechanical simulation.
+    
+    This method evaluates a design by combining normalized stress and stiffness values obtained from a simulation 
+    that models the material's response to applied pressure. The simulation uses surface geometry defined by input weights 
+    and material properties to calculate these metrics.
+    
+    Args:
+        stress_weight (float): Weighting factor for the stress component of the objective function.  A value between 0 and 1.
+        num_points (int): The number of points used in the surface generation.
+        weights (list): Weights used to define the surface geometry.
+        pressure (float): Applied pressure in the simulation.
+        length (float): Length parameter used in the simulation.
+        young (float): Young's modulus of the material.
+        poisson (float): Poisson's ratio of the material.
+        tol (float): Tolerance parameter for the simulation.
+        even_func (function): Function to ensure even distribution of points.
+    
+    Returns:
+        tuple: A tuple containing:
+            - value (float): The objective function value, a weighted combination of normalized stress and stiffness.
+            - mlwrapper1_result (dict): The raw results dictionary returned by the `mlwrapper1` function.
+            - stiffness_ (float): The normalized stiffness value.
+            - stress_ (float): The normalized stress value.
+    """
     surface = make_surface(weights, length, num_points, even_func)
     mlwrapper1_result = mlwrapper1(pressure=pressure, length=length,
                                    surface_1=surface, E2=young,
@@ -165,6 +294,35 @@ def optimize_surface(
         improvement_threshold=1e-5,
         max_no_improvement=50,
 ):
+    """
+    Optimizes a surface to minimize a combined objective function of stress and stiffness 
+    using the Covariance Matrix Adaptation Evolution Strategy (CMA).
+    
+    The method iteratively refines a set of weights that define the surface shape, 
+    aiming to achieve a balance between minimizing stress concentration and maximizing 
+    structural stiffness under a given load. Optimization results, including surface 
+    data and performance metrics, are saved for analysis.
+    
+    Args:
+        mean: Initial guess for the surface weights.
+        sigma: Initial step size for the CMA optimization. Defaults to 1.0.
+        save_dir: Directory to store optimization results. Defaults to 'output'.
+        seed: Random seed for reproducibility. Defaults to 0.
+        num_generations: Maximum number of optimization iterations. Defaults to 4000.
+        pressure: Applied pressure on the surface. Defaults to 1.
+        length: Length of the surface domain. Defaults to 1.
+        young: Young's modulus of the material. Defaults to 1.
+        poisson: Poisson's ratio of the material. Defaults to 0.
+        num_points: Number of discrete points used to represent the surface. Defaults to 512.
+        stress_weight: Weighting factor balancing stress minimization and stiffness maximization. Defaults to 0.5.
+        tol: Tolerance for the numerical solver used in the objective function. Defaults to 1e-6.
+        even_func: Flag to enforce symmetry in the surface representation. Defaults to False.
+        improvement_threshold: Minimum improvement in the objective function to continue optimization. Defaults to 1e-5.
+        max_no_improvement: Number of generations without significant improvement before stopping. Defaults to 50.
+    
+    Returns:
+        float: The lowest objective function value achieved during optimization.
+    """
     path = pathlib.Path(save_dir)
     path.mkdir(exist_ok=True, parents=True)
 

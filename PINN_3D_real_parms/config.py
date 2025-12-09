@@ -3,14 +3,24 @@ import math
 import os
 
 class LaserConfig:
-    """Класс для хранения и управления конфигурацией лазерного нагрева"""
+    """
+    Класс для хранения и управления конфигурацией лазерного нагрева
+    """
+
     
     def __init__(self, config_file=None):
         """
-        Инициализация конфигурации
+        Инициализация конфигурации.
+        
+        Конфигурация содержит параметры лазера, материала, PINN и обучения, 
+        которые используются для моделирования лазерной обработки материалов.
+        Если файл конфигурации не предоставлен, используются значения по умолчанию.
         
         Args:
-            config_file: путь к JSON файлу с конфигурацией (опционально)
+            config_file (str, optional): Путь к JSON файлу с конфигурацией. Defaults to None.
+        
+        Returns:
+            None
         """
         # Значения по умолчанию
         self.default_config = {
@@ -67,7 +77,17 @@ class LaserConfig:
         self.calculate_derived_parameters()
     
     def load_from_json(self, filepath):
-        """Загрузить конфигурацию из JSON файла"""
+        """
+        Загрузить конфигурацию из JSON файла.
+        
+        Args:
+            filepath (str): Путь к JSON файлу с конфигурацией.
+        
+        Returns:
+            None: Метод изменяет атрибут self.config, загружая конфигурацию из файла или используя значения по умолчанию в случае ошибки.
+        
+        Метод загружает конфигурацию из указанного JSON файла, объединяя ее с конфигурацией по умолчанию. Это позволяет гибко настраивать параметры обработки данных, не изменяя основной код программы, и обеспечивает возможность восстановления конфигурации по умолчанию в случае проблем с загрузкой файла. После загрузки или использования конфигурации по умолчанию, происходит пересчет производных параметров для обеспечения согласованности системы.
+        """
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 loaded_config = json.load(f)
@@ -85,7 +105,9 @@ class LaserConfig:
         self.calculate_derived_parameters()
     
     def deep_update(self, base_dict, update_dict):
-        """Рекурсивно обновляет словарь"""
+        """
+        Recursively updates a dictionary by merging the contents of another dictionary into it. If both dictionaries have a common key with dictionary values, the function recursively calls itself to merge the nested dictionaries. Otherwise, the value from the update dictionary overwrites the value in the base dictionary. This ensures a deep merge of dictionary structures.
+        """
         for key, value in update_dict.items():
             if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
                 base_dict[key] = self.deep_update(base_dict[key], value)
@@ -94,7 +116,17 @@ class LaserConfig:
         return base_dict
     
     def save_to_json(self, filepath):
-        """Сохранить конфигурацию в JSON файл"""
+        """
+        Сохранить конфигурацию в JSON файл.
+        
+        Args:
+            filepath (str): Путь к JSON файлу, в который будет сохранена конфигурация.
+        
+        Returns:
+            None
+        
+        This method persists the configuration data to a JSON file, ensuring that settings and parameters are saved for later use or to maintain consistency across sessions. It handles potential errors during file writing and provides feedback to the user on success or failure.
+        """
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False, default=str)
@@ -103,7 +135,17 @@ class LaserConfig:
             print(f"Ошибка сохранения конфигурации: {e}")
     
     def calculate_derived_parameters(self):
-        """Вычислить производные параметры"""
+        """
+        Вычисляет и устанавливает производные параметры, необходимые для моделирования лазерной обработки материалов.
+        
+        Эти параметры включают характеристики лазера (мощность, длительность импульса, частота повторения), теплофизические свойства материала, характерные масштабы длины и времени, а также нормированные параметры для использования в численном моделировании.  Вычисления зависят от режима лазера (непрерывный или импульсный) и используются для подготовки данных к физическому моделированию теплопереноса.
+        
+        Args:
+            self: Экземпляр класса LaserConfig, содержащий конфигурационные данные.
+        
+        Returns:
+            None. Метод обновляет атрибуты экземпляра класса LaserConfig.
+        """
         laser = self.config["laser"]
         material = self.config["material"]
         
@@ -192,7 +234,17 @@ class LaserConfig:
         self.update_globals()
     
     def update_globals(self):
-        """Обновляет глобальные переменные модуля"""
+        """
+        Updates module-level variables with the current configuration values.
+        
+        This method iterates through the non-private, non-callable attributes of the LaserConfig instance and makes them accessible as module-level variables. This allows external code to access the configuration parameters without directly referencing the LaserConfig object. Additionally, the entire LaserConfig object is exposed as 'CONFIG' within the module for complete configuration access.
+        
+        Args:
+            self: The LaserConfig instance whose attributes are to be updated in the module scope.
+        
+        Returns:
+            None
+        """
         import sys
         module = sys.modules[__name__]
         
@@ -206,7 +258,17 @@ class LaserConfig:
         setattr(module, 'CONFIG', self)
     
     def print_summary(self):
-        """Вывести сводку конфигурации"""
+        """
+        Вывести сводку конфигурации модели лазерного нагрева.
+        
+        Args:
+            self (LaserConfig): Экземпляр класса LaserConfig, содержащий параметры конфигурации.
+        
+        Returns:
+            None: Метод выводит сводку конфигурации в консоль и не возвращает никаких значений.
+        
+        Метод предоставляет удобный способ просмотра всех ключевых параметров, используемых в моделировании лазерного нагрева, включая параметры лазера, материала, временные масштабы, параметры моделирования и параметры PINN. Это позволяет пользователю быстро убедиться, что конфигурация задана правильно перед запуском моделирования.
+        """
         print("=" * 60)
         print("КОНФИГУРАЦИЯ МОДЕЛИ ЛАЗЕРНОГО НАГРЕВА")
         print("=" * 60)
@@ -251,7 +313,21 @@ config_manager = LaserConfig()
 
 # Для обратной совместимости экспортируем все атрибуты как глобальные переменные
 def export_globals():
-    """Экспортировать все параметры как глобальные переменные"""
+    """
+    Expose configuration parameters as global variables for convenient access.
+    
+    This function iterates through the attributes of the `config_manager` object,
+    identifying non-private, non-callable attributes that are not dictionaries or lists.
+    These attributes are then added to the current module's global namespace,
+    allowing them to be accessed directly.  Additionally, the `config_manager`
+    object itself is exposed as 'CONFIG' for access to the complete configuration.
+    
+    Args:
+        None
+    
+    Returns:
+        None
+    """
     import sys
     module = sys.modules[__name__]
     

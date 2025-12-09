@@ -1,0 +1,6 @@
+# PINN 3D Real Parameters
+## Overview
+This module implements a physics-informed neural network (PINN) for simulating 3D laser heat transfer processes. It provides tools for configuring laser parameters, converting between dimensional and non-dimensional units, and visualizing simulation results. The module supports both pulsed and continuous laser modes and offers functionalities for training and saving/loading PINN models.
+
+## Purpose
+This module is designed for simulating and analyzing laser-induced heat transfer in 3D materials. It allows users to define laser source terms, solve the heat equation using a PINN, and visualize the resulting temperature distributions. The module provides functionalities for setting up simulations with different laser parameters, converting between physical and non-dimensional coordinates and temperatures, and analyzing the simulation results through various plots and animations. It is intended for research and engineering applications focused on laser material processing and characterization.

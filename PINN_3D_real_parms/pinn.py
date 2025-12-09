@@ -6,7 +6,34 @@ from conditions import laser_source_term
 import config
 
 class PINN(nn.Module):
+    """
+    Physics-Informed Neural Network (PINN) class for solving partial differential equations.
+    
+        Attributes:
+            network: The neural network used to approximate the solution.
+            layers_sizes: The sizes of the layers in the neural network.
+    
+        Class Methods:
+        - __init__:
+    """
+
     def __init__(self, layers_sizes):
+        """
+        Initializes the neural network.
+        
+        Args:
+            layers_sizes (list[int]): A list of integers representing the size of each layer in the network.
+        
+        Initializes the following class fields:
+            network (nn.Sequential): The sequential neural network module, constructed from the provided layer sizes.
+                     It consists of linear layers and Tanh activations.
+        
+        Returns:
+            None
+        
+        The network is initialized to learn complex relationships within data, enabling the model to approximate functions 
+        and ultimately solve the underlying physical problems related to laser processing.
+        """
         super().__init__()
         layers = []
         for i in range(len(layers_sizes) - 1):
@@ -16,6 +43,20 @@ class PINN(nn.Module):
         self.network = nn.Sequential(*layers)
 
     def forward(self, x_tensor, y_tensor, z_tensor, t_tensor):
+        """
+        Passes input tensors through the network to obtain a prediction.
+        
+        Combines the input tensors into a single tensor and uses it as input for the neural network. This allows the network to consider all input variables simultaneously when making a prediction.
+        
+        Args:
+            x_tensor (torch.Tensor): The first input tensor representing one of the input variables.
+            y_tensor (torch.Tensor): The second input tensor representing one of the input variables.
+            z_tensor (torch.Tensor): The third input tensor representing one of the input variables.
+            t_tensor (torch.Tensor): The fourth input tensor representing one of the input variables.
+        
+        Returns:
+            torch.Tensor: The output of the network, representing the prediction based on the combined input.
+        """
         inputs = torch.stack([x_tensor, y_tensor, z_tensor, t_tensor], dim=1)
         return self.network(inputs)
 
@@ -23,10 +64,21 @@ class PINN(nn.Module):
 def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll: torch.Tensor, 
                      t_coll: torch.Tensor, diff_coef, laser_mode=None):
     """
-    Вычисление loss для PINN с возможностью выбора режима лазера
+    Computes the loss for a Physics-Informed Neural Network (PINN) model simulating laser-induced heat transfer.
+    
+    The loss function incorporates terms for the partial differential equation (PDE) representing heat conduction, initial conditions, and boundary conditions. It calculates gradients of the model's output with respect to space and time to enforce the PDE.  The loss is minimized during training to find a model that accurately represents the temperature distribution within the material.
     
     Args:
-        laser_mode: режим лазера ("pulsed" или "continuous"). Если None, берется из config
+        model: The PINN model being trained.
+        x_coll: Tensor of x-coordinates for collocation points.
+        y_coll: Tensor of y-coordinates for collocation points.
+        z_coll: Tensor of z-coordinates for collocation points.
+        t_coll: Tensor of time values for collocation points.
+        diff_coef: Diffusion coefficient for the heat equation.
+        laser_mode:  Specifies the laser operation mode ("pulsed" or "continuous"). If None, the mode is taken from the configuration.
+    
+    Returns:
+        The computed loss value (a scalar tensor).
     """
     coef_tensor = torch.tensor(diff_coef, dtype=x_coll.dtype, device=x_coll.device)
     
@@ -120,10 +172,27 @@ def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll:
 
 def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3, device='cpu', laser_mode=None):
     """
-    Обучение PINN с возможностью выбора режима лазера
+    Trains a Physics-Informed Neural Network (PINN) to model laser-induced heat transfer.
+    
+    This method performs the training of the PINN model using an optimization process 
+    to minimize the discrepancy between the model's predictions and the underlying 
+    physical equations governing heat transfer. It iterates through a specified 
+    number of epochs, calculating the loss and updating the model's parameters 
+    accordingly. The training process considers the chosen laser mode to accurately 
+    simulate the heat distribution.
     
     Args:
-        laser_mode: режим лазера ("pulsed" или "continuous"). Если None, берется из config
+        model: The PINN model to be trained.
+        diff_coef: Diffusion coefficient used in the heat transfer equation.
+        num_epochs (int, optional): The number of training epochs. Defaults to 200.
+        lr (float, optional): The learning rate for the optimizer. Defaults to 1e-3.
+        device (str, optional): The device to use for training ('cpu' or 'cuda'). Defaults to 'cpu'.
+        laser_mode (str, optional): The laser mode ("pulsed" or "continuous"). 
+                                     If None, the mode is taken from the configuration. 
+                                     Defaults to None.
+    
+    Returns:
+        list: A list containing the loss value for each epoch during training.
     """
     model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)

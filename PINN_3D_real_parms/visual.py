@@ -8,8 +8,18 @@ from matplotlib.collections import PatchCollection
 
 def visualize_laser_pulses():
     """
-    Визуализация временного профиля лазерных импульсов
-    В зависимости от режима показывает разные графики
+    Визуализация временного профиля лазерных импульсов.
+    
+    Метод отображает временную зависимость интенсивности лазерного излучения, 
+    адаптируясь к текущему режиму работы лазера (импульсный или непрерывный).
+    В импульсном режиме отображаются отдельные импульсы с указанием их параметров, 
+    а в непрерывном - постоянный уровень интенсивности.
+    
+    Args:
+        None
+    
+    Returns:
+        None
     """
     # Получаем текущий режим из конфигурации
     current_mode = config.LASER_MODE
@@ -116,7 +126,17 @@ def visualize_laser_pulses():
         plt.show()
 
 def visualize_laser_spatial_profile():
-    """Визуализация пространственного профиля лазерного пучка"""
+    """
+    Визуализация пространственного профиля лазерного пучка.
+    
+    Метод генерирует двумерный контурный график и трехмерную поверхность, отображающие распределение интенсивности лазерного пучка в пространстве.  Визуализация включает информацию о радиусе пучка и режиме его работы (импульсный или непрерывный). Результат сохраняется в файл и отображается на экране.
+    
+    Args:
+        None
+    
+    Returns:
+        None
+    """
     # Получаем текущий режим
     current_mode = config.LASER_MODE
     
@@ -201,19 +221,22 @@ def add_isotherm_plot(ax, U_physical, x_phys, y_phys, z_phys, time_idx,
                      isotherm_temp=1900, mode_text="", power_text="", 
                      beam_radius_um=None):
     """
-    Добавляет график с изотермой на глубине и ширине на анимации
+    Plots an isotherm on the depth and width of the simulation.
     
     Args:
-        ax: ось для рисования
-        U_physical: физическое температурное поле
-        x_phys: физические координаты x (мкм)
-        y_phys: физические координаты y (мкм)  
-        z_phys: физические координаты z (глубина, мкм)
-        time_idx: индекс времени
-        isotherm_temp: температура изотермы (K)
-        mode_text: текст режима
-        power_text: текст мощности
-        beam_radius_um: радиус пучка в мкм
+        ax: The axes object to draw on.
+        U_physical: The physical temperature field.
+        x_phys: Physical x coordinates (µm).
+        y_phys: Physical y coordinates (µm).
+        z_phys: Physical z coordinates (depth, µm).
+        time_idx: The time index.
+        isotherm_temp: The temperature of the isotherm (K). Defaults to 1900.
+        mode_text: Text describing the mode. Defaults to "".
+        power_text: Text describing the power. Defaults to "".
+        beam_radius_um: The beam radius in µm. Defaults to None.
+    
+    Returns:
+        None
     """
     # Центральные индексы
     center_x = len(x_phys) // 2
@@ -313,9 +336,11 @@ def add_isotherm_plot(ax, U_physical, x_phys, y_phys, z_phys, time_idx,
 
 def create_animation(U_data, x_plot, y_plot, z_plot, t_plot, title, filename):
     """
-    Создает анимацию с ФИЗИЧЕСКИМИ координатами и температурой
-    с добавлением срезов на разных глубинах
-    Поддерживает оба режима лазера: импульсный и непрерывный
+    Создает анимацию, визуализирующую распределение температуры в трехмерном пространстве, 
+    полученном в результате моделирования лазерного воздействия на материал. 
+    Анимация отображает срезы температуры в различных плоскостях и на разных глубинах, 
+    что позволяет анализировать динамику нагрева и теплопроводности.
+    Поддерживает визуализацию как для импульсного, так и для непрерывного режимов лазерного излучения.
     """
     # Конвертация в физические величины
     U_physical = convert_to_physical_temperature(U_data)
@@ -728,8 +753,22 @@ def create_animation(U_data, x_plot, y_plot, z_plot, t_plot, title, filename):
 
 def plot_temperature_evolution(U_data, x_plot, y_plot, z_plot, t_plot):
     """
-    Создает график эволюции температуры в центре пучка во времени
-    Поддерживает оба режима лазера
+    Plots the temperature evolution at the center of the laser beam over time.
+    
+    This visualization helps to understand the heating dynamics within the material 
+    during laser exposure, accommodating both pulsed and continuous laser modes. 
+    The plot displays the temperature changes, key temperature thresholds, and 
+    relevant parameters like pulse timings or continuous power levels.
+    
+    Args:
+        U_data (numpy.ndarray): Temperature data.
+        x_plot (numpy.ndarray): X-coordinates for plotting.
+        y_plot (numpy.ndarray): Y-coordinates for plotting.
+        z_plot (numpy.ndarray): Z-coordinates for plotting.
+        t_plot (numpy.ndarray): Time points for plotting.
+    
+    Returns:
+        numpy.ndarray: Temperature values at the center of the beam over time.
     """
     U_physical = convert_to_physical_temperature(U_data)
     t_phys = t_plot * config.CHARACTERISTIC_TIME * 1e6  # мкс
@@ -845,8 +884,18 @@ def plot_temperature_evolution(U_data, x_plot, y_plot, z_plot, t_plot):
 
 def plot_depth_temperature_profiles(U_data, x_plot, y_plot, z_plot, t_plot):
     """
-    Создает графики распределения температуры по глубине в разные моменты времени
-    Поддерживает оба режима лазера
+    Generates depth temperature profiles at different points in time.
+    Supports both laser modes (pulsed and continuous).
+    
+    Args:
+        U_data (numpy.ndarray): Temperature data.
+        x_plot (list): X-axis coordinates for plotting.
+        y_plot (list): Y-axis coordinates for plotting.
+        z_plot (list): Z-axis coordinates for plotting (depth).
+        t_plot (list): Time points for plotting.
+    
+    Returns:
+        None: Displays and saves the plot.
     """
     U_physical = convert_to_physical_temperature(U_data)
     z_phys = np.array(z_plot) * config.CHARACTERISTIC_LENGTH * 1e6  # мкм
@@ -938,14 +987,22 @@ def plot_depth_temperature_profiles(U_data, x_plot, y_plot, z_plot, t_plot):
 def plot_comparison_pulse_vs_continuous(temp_pulsed, temp_continuous, t_plot, 
                                         pulsed_params=None, continuous_params=None):
     """
-    Создает график сравнения температуры для импульсного и непрерывного режимов
+    Generates a plot comparing temperature profiles for pulsed and continuous laser heating modes.
+    
+    The plot visualizes the temperature evolution over time for both modes, 
+    highlights key parameters like maximum temperatures and the time at which they occur,
+    and indicates whether the 1900 K isotherm is reached. 
+    It also provides a detailed comparison of the two modes, including temperature differences and efficiency assessments.
     
     Args:
-        temp_pulsed: температура для импульсного режима (массив)
-        temp_continuous: температура для непрерывного режима (массив)
-        t_plot: временная ось (безразмерная)
-        pulsed_params: параметры импульсного режима (опционально)
-        continuous_params: параметры непрерывного режима (опционально)
+        temp_pulsed (array): Temperature data for the pulsed mode.
+        temp_continuous (array): Temperature data for the continuous mode.
+        t_plot (array): Time axis data (dimensionless).
+        pulsed_params (dict, optional): Parameters for the pulsed mode. Defaults to {"num_pulses": 8, "avg_power": 10.0, "rep_rate": 8000.0}.
+        continuous_params (dict, optional): Parameters for the continuous mode. Defaults to {"power": 5.0}.
+    
+    Returns:
+        None: Displays and saves the generated plot as 'comparison_pulse_vs_continuous.png'. Prints a message if data for both modes is not provided.
     """
     if temp_pulsed is None or temp_continuous is None:
         print("Для сравнения нужны данные обоих режимов!")
@@ -1058,10 +1115,18 @@ def plot_comparison_pulse_vs_continuous(temp_pulsed, temp_continuous, t_plot,
 
 def plot_temperature_distribution_at_time(U_data, x_plot, y_plot, z_plot, t_plot, time_idx=-1):
     """
-    Создает 3D-подобную визуализацию распределения температуры в выбранный момент времени
+    Визуализирует распределение температуры в трехмерном пространстве в заданный момент времени, предоставляя детальный анализ температурного поля, включая поверхностные температуры, изотермы, профили по глубине и горизонтальные срезы.
     
     Args:
-        time_idx: индекс времени (по умолчанию последний момент)
+        U_data (numpy.ndarray): Данные о температуре.
+        x_plot (numpy.ndarray): Координаты x для построения графика.
+        y_plot (numpy.ndarray): Координаты y для построения графика.
+        z_plot (numpy.ndarray): Координаты z для построения графика.
+        t_plot (numpy.ndarray): Массив временных точек.
+        time_idx (int, optional): Индекс времени для визуализации. По умолчанию -1 (последний момент времени).
+    
+    Returns:
+        None:  Метод отображает графики, иллюстрирующие распределение температуры.
     """
     U_physical = convert_to_physical_temperature(U_data)
     x_phys = np.array(x_plot) * config.CHARACTERISTIC_LENGTH * 1e6
@@ -1290,7 +1355,15 @@ def plot_temperature_distribution_at_time(U_data, x_plot, y_plot, z_plot, t_plot
     plt.show()
 
 def plot_laser_intensity_3d():
-    """Создает 3D визуализацию интенсивности лазерного пучка"""
+    """
+    Визуализирует интенсивность лазерного пучка в 3D и 2D, отображая его профиль и ключевые параметры.
+    
+    Args:
+        None
+    
+    Returns:
+        None
+    """
     x = np.linspace(-1, 1, 100) * config.CHARACTERISTIC_LENGTH * 1e6
     y = np.linspace(-1, 1, 100) * config.CHARACTERISTIC_LENGTH * 1e6
     X, Y = np.meshgrid(x, y)
@@ -1361,11 +1434,18 @@ def plot_laser_intensity_3d():
 def plot_heating_dynamics_comparison(U_data_pulsed, U_data_continuous, 
                                     x_plot, y_plot, z_plot, t_plot):
     """
-    Сравнивает динамику нагрева в импульсном и непрерывном режимах
+    Сравнивает динамику нагрева в импульсном и непрерывном режимах, визуализируя изменения температуры в центре образца, градиент температуры, объем нагретого материала и интегральную характеристику перегрева.
     
     Args:
-        U_data_pulsed: температурное поле для импульсного режима
-        U_data_continuous: температурное поле для непрерывного режима
+        U_data_pulsed: Температурное поле для импульсного режима.
+        U_data_continuous: Температурное поле для непрерывного режима.
+        x_plot: Координаты x для построения графиков.
+        y_plot: Координаты y для построения графиков.
+        z_plot: Координаты z для построения графиков.
+        t_plot: Временные точки для построения графиков.
+    
+    Returns:
+        None. Отображает графики сравнения динамики нагрева.
     """
     U_phys_pulsed = convert_to_physical_temperature(U_data_pulsed)
     U_phys_continuous = convert_to_physical_temperature(U_data_continuous)
@@ -1489,7 +1569,17 @@ def plot_heating_dynamics_comparison(U_data_pulsed, U_data_continuous,
 
 def plot_pulse_train_visualization():
     """
-    Визуализация последовательности импульсов для импульсного режима
+    Визуализация последовательности импульсов для импульсного режима.
+    
+    Метод генерирует и отображает график последовательности лазерных импульсов,
+    позволяя визуально оценить параметры импульсного режима, такие как период,
+    длительность и амплитуда импульсов.
+    
+    Args:
+        None
+    
+    Returns:
+        None
     """
     if config.LASER_MODE != "pulsed":
         print("Эта функция предназначена только для импульсного режима!")
@@ -1578,10 +1668,22 @@ def plot_pulse_train_visualization():
 
 def plot_isotherm_1900_analysis(U_data, x_plot, y_plot, z_plot, t_plot, time_idx=-1):
     """
-    Специальный график для анализа изотермы 1900 K
+    Generates a detailed analysis of the 1900 K isotherm, visualizing temperature distribution and key parameters over time.
+    
+    This function creates several plots to understand the thermal behavior of the material under laser irradiation, 
+    including surface temperature contours, temperature profiles, 3D visualization of the heated zone, and the evolution 
+    of zone characteristics over time. It provides insights into the extent and dynamics of the heated area.
     
     Args:
-        time_idx: индекс времени (по умолчанию последний момент)
+        U_data (numpy.ndarray): 4D array containing temperature data.
+        x_plot (numpy.ndarray): 1D array representing x-coordinates.
+        y_plot (numpy.ndarray): 1D array representing y-coordinates.
+        z_plot (numpy.ndarray): 1D array representing z-coordinates.
+        t_plot (numpy.ndarray): 1D array representing time points.
+        time_idx (int, optional): Index of the time point to analyze. Defaults to -1 (last time point).
+    
+    Returns:
+        None: Displays the generated plots and saves them as PNG images.
     """
     U_physical = convert_to_physical_temperature(U_data)
     x_phys = np.array(x_plot) * config.CHARACTERISTIC_LENGTH * 1e6
