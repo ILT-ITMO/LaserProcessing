@@ -4,14 +4,21 @@ from pinn import PINN
 
 def save_model(model, path='model.pth', optimizer=None, epoch=None, loss=None):
     """
-    Сохраняет модель и дополнительную информацию
+    Saves the model and related training information to a file.
+    
+    This allows resuming training from a specific point or using a pre-trained model.
+    The model's architecture is also saved to ensure consistent reconstruction.
     
     Args:
-        model: модель для сохранения
-        path: путь к файлу
-        optimizer: оптимизатор (опционально)
-        epoch: номер эпохи (опционально)
-        loss: значение loss (опционально)
+        model: The PyTorch model instance to be saved.
+        path (str, optional): The file path to save the model checkpoint. Defaults to 'model.pth'.
+        optimizer (torch.optim.Optimizer, optional): The optimizer instance used during training. 
+                                                     If provided, its state is also saved. Defaults to None.
+        epoch (int, optional): The current epoch number. If provided, it's saved in the checkpoint. Defaults to None.
+        loss (float, optional): The current loss value. If provided, it's saved in the checkpoint. Defaults to None.
+    
+    Returns:
+        None
     """
     checkpoint = {
         'model_state_dict': model.state_dict(),
@@ -30,16 +37,26 @@ def save_model(model, path='model.pth', optimizer=None, epoch=None, loss=None):
 
 def load_model(path='model.pth', device='cpu', optimizer=None):
     """
-    Загружает модель и дополнительную информацию
+    Loads a pre-trained model and associated information from a checkpoint file.
+    
+    This method reconstructs the model architecture, loads the trained weights,
+    and optionally restores the optimizer state, allowing for resuming training
+    or performing inference with a previously saved model.  It facilitates 
+    reusing and continuing work from saved states, avoiding redundant training.
     
     Args:
-        path: путь к файлу
-        device: устройство для загрузки
-        optimizer: оптимизатор для восстановления состояния (опционально)
+        path (str): The path to the checkpoint file (e.g., 'model.pth').
+        device (str): The device to load the model onto (e.g., 'cpu', 'cuda').
+        optimizer (torch.optim.Optimizer, optional): An optimizer instance. 
+            If provided and the checkpoint contains optimizer state, the 
+            optimizer's state is loaded. Defaults to None.
     
     Returns:
-        model: загруженная модель
-        checkpoint: полный чекпоинт с дополнительной информацией
+        tuple: A tuple containing:
+            - model: The loaded PyTorch model.
+            - checkpoint: The complete checkpoint dictionary loaded from the file,
+              containing model architecture, state dictionary, and potentially
+              optimizer state, epoch number, and loss value.
     """
     checkpoint = torch.load(path, map_location=device)
     

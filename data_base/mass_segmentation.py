@@ -6,6 +6,20 @@ import pandas as pd
 # сортировка папки по номеру снимка
 path = "sample_imgs4"
 def sorting_folder(path):
+    """
+    Sorts files within a folder based on a naming convention, preparing them for sequential processing.
+    
+    The function sorts files in a given directory, assuming filenames start with a numerical prefix
+    followed by an underscore. It first sorts alphabetically by the prefix, then numerically
+    by the prefix (after removing the first element). This ensures files are ordered logically
+    for tasks like time-series analysis or step-by-step processing.
+    
+    Args:
+        path (str): The path to the folder containing the files to sort.
+    
+    Returns:
+        list: A list of sorted filenames.
+    """
     filenames = os.listdir(path)
     filenames.sort(key=lambda file: file.split('_')[0])
     filenames = filenames[1:]
@@ -15,6 +29,24 @@ def sorting_folder(path):
 
 
 def segmentation_for_folder(folder):
+    """
+    Segments images in a folder and returns segmentation results.
+    
+    This method processes images within a specified folder, performing segmentation
+    on each image to identify regions of interest, potentially related to laser-material interactions.
+    It refines the segmentation by iteratively adjusting a black level parameter to optimize the results.
+    Segmented images are saved to a designated directory for further analysis.
+    
+    Args:
+        folder (str): The path to the folder containing the images to be segmented.
+    
+    Returns:
+        tuple: A tuple containing three lists: `result_list`, `avg_result_list`,
+            and `std_div_result_list`.
+            `result_list` stores lists of segmentation widths for each image.
+            `avg_result_list` stores lists of average widths for each image.
+            `std_div_result_list` stores lists of standard deviations for each image.
+    """
     result_list, sup_list, avg_result_list, avg_sup_list, std_div_result_list, std_div_sup_list   = [], [], [], [], [], []
     path = folder
     filenames = sorting_folder(path)

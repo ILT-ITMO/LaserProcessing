@@ -1,0 +1,7 @@
+
+# Surface Optimizer
+## Overview
+This module provides functionalities for optimizing surface shapes based on mechanical properties like stress and stiffness. It utilizes numerical optimization techniques, specifically the Covariance Matrix Adaptation Evolution Strategy (CMA), alongside simulation tools to evaluate surface performance under applied pressure. The module includes tools for Fourier series approximation, data visualization, and result saving.
+
+## Purpose
+This module is designed to find optimal surface geometries that minimize a defined objective function, balancing stress and stiffness characteristics. It supports running multiple optimization trials, analyzing the results through plots of objective function history and surface/stress distributions, and saving the best performing configurations. The core functionality revolves around simulating 2D contact mechanics and leveraging these simulations within an optimization loop to achieve desired surface properties. It is intended for applications where precise control of surface shape is critical for mechanical performance.
