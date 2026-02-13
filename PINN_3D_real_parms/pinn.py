@@ -170,7 +170,7 @@ def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll:
     
     return w_pde * loss_pde + w_ic * loss_ic + w_bc * loss_bc
 
-def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3, device='cpu', laser_mode=None):
+def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3, device='cpu', laser_mode=None, progress_callback=None):
     """
     Trains a Physics-Informed Neural Network (PINN) to model laser-induced heat transfer.
     
@@ -190,6 +190,7 @@ def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3, device='cpu', laser_mo
         laser_mode (str, optional): The laser mode ("pulsed" or "continuous"). 
                                      If None, the mode is taken from the configuration. 
                                      Defaults to None.
+        progress_callback (callable, optional): function(epoch, loss) called after each epoch.
     
     Returns:
         list: A list containing the loss value for each epoch during training.
@@ -214,13 +215,24 @@ def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3, device='cpu', laser_mo
     t_coll = T.flatten()
 
     history = []
-    for epoch in tqdm(range(1, num_epochs+1)):
+    # Use tqdm only if no callback is provided to avoid cluttering logs if we are in web mode
+    iterator = range(1, num_epochs+1)
+    if progress_callback is None:
+        iterator = tqdm(iterator)
+
+    for epoch in iterator:
         optimizer.zero_grad()
         loss = compute_pinn_loss(model, x_coll, y_coll, z_coll, t_coll, 
                                 diff_coef, laser_mode=laser_mode)
         loss.backward()
         optimizer.step()
-        history.append(loss.item())
-        if epoch % 100 == 0:
+        loss_val = loss.item()
+        history.append(loss_val)
+        
+        if progress_callback:
+            progress_callback(epoch, loss_val)
+            
+        if progress_callback is None and epoch % 100 == 0:
             print(f"Epoch {epoch}/{num_epochs}, Loss={loss:.3e}, Mode={laser_mode}")
+            
     return history

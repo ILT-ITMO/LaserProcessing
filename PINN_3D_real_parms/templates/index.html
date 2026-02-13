@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PINN Laser Model</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900 overflow-hidden h-screen flex flex-col">
+    <!-- Top Navigation -->
+    <nav class="bg-white border-b border-slate-200 px-8 py-3 flex justify-between items-center z-10">
+        <div class="flex items-center space-x-3">
+            <div class="bg-blue-600 p-1.5 rounded-lg">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+            </div>
+            <h1 class="text-lg font-bold text-slate-800 tracking-tight">Laser<span class="text-blue-600">PINN</span>
+                <span class="text-xs font-normal text-slate-400 ml-2">v2025</span>
+            </h1>
+        </div>
+        <div class="flex items-center space-x-6">
+            <div id="connection-status" class="flex items-center text-xs font-medium text-emerald-500">
+                <span class="w-2 h-2 bg-emerald-500 rounded-full mr-2 animate-pulse"></span> Connected
+            </div>
+            <div class="h-4 w-px bg-slate-200"></div>
+            <button id="btn-start" onclick="startTraining()"
+                class="bg-blue-600 text-white py-1.5 px-4 rounded-lg hover:bg-blue-700 transition-all text-sm font-semibold shadow-sm flex items-center transform hover:scale-105 active:scale-95">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z">
+                    </path>
+                </svg>
+                Launch Model
+            </button>
+            <button id="btn-stop" onclick="stopTraining()"
+                class="bg-white text-slate-700 border border-slate-200 py-1.5 px-4 rounded-lg hover:bg-slate-50 transition-all text-sm font-semibold shadow-sm disabled:opacity-50 hidden"
+                disabled>
+                Stop
+            </button>
+        </div>
+    </nav>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar: Parameter Tabs -->
+        <aside class="w-96 bg-white border-r border-slate-200 flex flex-col">
+            <div class="flex border-b border-slate-100">
+                <button onclick="showTab('laser')" id="tab-btn-laser"
+                    class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-blue-600 text-blue-600">Laser</button>
+                <button onclick="showTab('material')" id="tab-btn-material"
+                    class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-600">Material</button>
+                <button onclick="showTab('pinn')" id="tab-btn-pinn"
+                    class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-600">Model</button>
+                <button onclick="showTab('training')" id="tab-btn-training"
+                    class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-600">Training</button>
+                <button onclick="showTab('archive')" id="tab-btn-archive"
+                    class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-600">Archive</button>
+            </div>
+
+            <div class="p-6 overflow-y-auto flex-1 space-y-6" id="params-container">
+                <!-- Laser Tab -->
+                <div id="tab-laser" class="tab-content space-y-4">
+                    <div class="group">
+                        <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Operating Mode</label>
+                        <select id="laser-mode"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                            <option value="pulsed">Pulsed Irradiation</option>
+                            <option value="continuous">Continuous Wave</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Avg Power (W)</label>
+                            <input type="number" id="laser-avg_power" step="0.1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Rep Rate (Hz)</label>
+                            <input type="number" id="laser-rep_rate"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Pulse Duration (s)</label>
+                            <input type="text" id="laser-pulse_duration"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Beam Radius (m)</label>
+                            <input type="text" id="laser-beam_radius"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Scan Velocity (m/s)</label>
+                        <input type="number" id="laser-scan_velocity" step="0.01"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <!-- Material Tab -->
+                <div id="tab-material" class="tab-content hidden space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Density (kg/m³)</label>
+                            <input type="number" id="material-density"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Specific Heat</label>
+                            <input type="number" id="material-specific_heat"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Conductivity (W/m·K)</label>
+                        <input type="number" id="material-conductivity" step="0.1"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Absorption (1/m)</label>
+                            <input type="number" id="material-absorption"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Reflectivity</label>
+                            <input type="number" id="material-reflectivity" step="0.01" max="1" min="0"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PINN Tab -->
+                <div id="tab-pinn" class="tab-content hidden space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Num Gaussians</label>
+                            <input type="number" id="pinn-num_gaussians"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Laser Amp</label>
+                            <input type="number" id="pinn-laser_amplitude" step="0.1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Collocation (x,y,z,t)</label>
+                        <div class="grid grid-cols-4 gap-2">
+                            <input type="number" id="pinn-collocation_points-x"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                            <input type="number" id="pinn-collocation_points-y"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                            <input type="number" id="pinn-collocation_points-z"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                            <input type="number" id="pinn-collocation_points-t"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Training Tab -->
+                <div id="tab-training" class="tab-content hidden space-y-4">
+                    <!-- ... existing training content ... -->
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Epochs</label>
+                        <input type="number" id="training-num_epochs"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Learning Rate</label>
+                        <input type="number" id="training-learning_rate" step="0.0001"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Compute Device</label>
+                        <select id="training-device"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="auto">Auto Select</option>
+                            <option value="cpu">CPU Only</option>
+                            <option value="cuda">NVIDIA CUDA</option>
+                            <option value="mps">Apple Metal (MPS)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Archive Tab -->
+                <div id="tab-archive" class="tab-content hidden space-y-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="text-xs font-bold text-slate-500 uppercase">Past Simulations</h4>
+                        <button onclick="loadHistory()"
+                            class="text-blue-600 hover:underline text-[10px] font-bold">Refresh</button>
+                    </div>
+                    <div id="history-list" class="space-y-2 overflow-y-auto max-h-[400px] pr-2">
+                        <!-- History items injected here -->
+                        <p class="text-xs text-slate-400 italic">No runs recorded yet.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 border-t border-slate-100 bg-slate-50/50">
+                <button onclick="updateConfig()"
+                    class="w-full bg-slate-800 text-white py-3 px-4 rounded-xl hover:bg-slate-900 transition-all text-sm font-semibold shadow-md active:scale-95">
+                    Apply Changes
+                </button>
+            </div>
+        </aside>
+
+        <!-- Dynamic Main Area -->
+        <main class="flex-1 p-8 overflow-y-auto bg-slate-50/20 backdrop-blur-sm">
+            <div class="max-w-[1800px] mx-auto space-y-8">
+                <!-- Status Bar -->
+                <div id="training-banner"
+                    class="hidden bg-blue-50 border border-blue-100 p-4 rounded-2xl flex items-center justify-between mb-8 animate-in fade-in slide-in-from-top duration-500">
+                    <div class="flex items-center space-x-4">
+                        <div
+                            class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-200">
+                            <svg class="w-6 h-6 text-white animate-spin-slow" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p id="state-msg" class="text-xs font-bold text-blue-800 uppercase tracking-widest">Training
+                                PINN Model</p>
+                            <p id="state-detail" class="text-sm text-blue-600">Iterating through physics constraints...
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end">
+                        <span id="progress-pct" class="text-2xl font-black text-blue-800 tabular-nums">0%</span>
+                        <div class="w-48 bg-blue-100 rounded-full h-1.5 mt-1">
+                            <div id="progress-bar-fill"
+                                class="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style="width: 0%">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div
+                        class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-md transition-shadow group flex flex-col justify-center min-h-[160px]">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Current Loss</p>
+                        <div id="metric-loss" class="text-4xl font-black text-slate-800 tabular-nums">-</div>
+                    </div>
+                    <div
+                        class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-md transition-shadow group flex flex-col justify-center min-h-[160px]">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Current Epoch</p>
+                        <div id="metric-epoch" class="text-4xl font-black text-slate-800 tabular-nums">0</div>
+                    </div>
+                    <div
+                        class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-md transition-shadow group flex flex-col justify-center min-h-[160px]">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Target Epochs</p>
+                        <div id="metric-target" class="text-4xl font-black text-slate-800 tabular-nums">0</div>
+                    </div>
+                    <div
+                        class="bg-blue-600 p-8 rounded-[2.5rem] shadow-xl shadow-blue-100 group transform hover:-translate-y-1 transition-transform flex flex-col justify-center min-h-[160px]">
+                        <p class="text-xs font-bold text-blue-200 uppercase tracking-widest mb-3">Architecture</p>
+                        <div class="text-2xl font-black text-white">[4, 128, 128, 1]</div>
+                    </div>
+                </div>
+
+                <!-- Main Visualization Cards -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Chart Section -->
+                    <div class="space-y-8">
+                        <div class="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 h-full flex flex-col">
+                            <div class="flex justify-between items-center mb-6">
+                                <h3 class="text-xl font-bold text-slate-800">Convergence History</h3>
+                                <div class="bg-slate-50 py-1 px-3 rounded-full text-xs font-semibold text-slate-500">
+                                    Logarithmic Scale</div>
+                            </div>
+                            <div class="relative h-[500px]">
+                                <canvas id="lossChartPolished"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Animation Section -->
+                    <div class="space-y-8">
+                        <div
+                            class="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 h-[660px] flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-6">Result Preview</h3>
+                            <div
+                                class="flex-1 flex flex-col items-center justify-center bg-slate-50 rounded-[1.5rem] border border-dashed border-slate-200 p-4 relative overflow-hidden group">
+                                <div id="result-placeholder" class="text-center space-y-4">
+                                    <div
+                                        class="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-300">
+                                        <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z">
+                                            </path>
+                                        </svg>
+                                    </div>
+                                    <p class="text-slate-400 text-sm font-medium">Ready to Visualize</p>
+                                </div>
+                                <img id="result-gif" src="" alt="Result"
+                                    class="hidden absolute inset-0 w-full h-full object-contain rounded-[1.5rem] p-2">
+                                <div id="hover-overlay"
+                                    class="hidden absolute inset-0 bg-blue-600/10 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <a id="download-link" href="#"
+                                        class="bg-white text-blue-600 px-6 py-2 rounded-full font-bold shadow-lg hover:bg-blue-50 transition-colors">Download
+                                        GIF</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Additional Styles -->
+    <style>
+        .animate-spin-slow {
+            animation: spin 3s linear infinite;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .tab-content {
+            transition: all 0.3s ease;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #cbd5e1;
+        }
+    </style>
+
+    <script>
+        let chart;
+        let masterConfig = {};
+
+        // Tab Management
+        function showTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+
+            document.querySelectorAll('button[id^="tab-btn-"]').forEach(btn => {
+                btn.classList.remove('border-blue-600', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-slate-400');
+            });
+            document.getElementById('tab-btn-' + tabId).classList.remove('border-transparent', 'text-slate-400');
+            document.getElementById('tab-btn-' + tabId).classList.add('border-blue-600', 'text-blue-600');
+
+            if (tabId === 'archive') loadHistory();
+        }
+
+        // Init Chart
+        const ctx = document.getElementById('lossChartPolished').getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
+        gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
+
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'PINN Loss',
+                    data: [],
+                    borderColor: '#2563eb',
+                    borderWidth: 3,
+                    fill: true,
+                    backgroundColor: gradient,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#2563eb',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        type: 'logarithmic',
+                        grid: { color: '#f8fafc', drawTicks: false },
+                        border: { display: false },
+                        ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8' }
+                    },
+                    x: {
+                        grid: { display: false },
+                        border: { display: false },
+                        ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 12,
+                        titleFont: { size: 12, weight: '600' },
+                        bodyFont: { size: 14, weight: 'bold' },
+                        cornerRadius: 8,
+                        displayColors: false
+                    }
+                }
+            }
+        });
+
+        async function loadConfig() {
+            const res = await fetch('/config');
+            masterConfig = await res.json();
+
+            // Map flat inputs to nested config
+            const mapFields = (obj, prefix = '') => {
+                for (let key in obj) {
+                    const fullKey = prefix ? `${prefix}-${key}` : key;
+                    if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                        mapFields(obj[key], fullKey);
+                    } else {
+                        const el = document.getElementById(fullKey);
+                        if (el) el.value = obj[key];
+                    }
+                }
+            };
+            mapFields(masterConfig);
+            updateMetricsFromConfig();
+        }
+
+        function updateMetricsFromConfig() {
+            document.getElementById('metric-target').innerText = masterConfig.training.num_epochs;
+        }
+
+        async function updateConfig() {
+            // Collect all inputs
+            const updateObj = (obj, prefix = '') => {
+                const newObj = Array.isArray(obj) ? [] : {};
+                for (let key in obj) {
+                    const fullKey = prefix ? `${prefix}-${key}` : key;
+                    if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                        newObj[key] = updateObj(obj[key], fullKey);
+                    } else {
+                        const el = document.getElementById(fullKey);
+                        if (el) {
+                            const val = el.value;
+                            newObj[key] = isNaN(val) || val === '' ? val : (val.includes('.') ? parseFloat(val) : parseInt(val));
+                        } else {
+                            newObj[key] = obj[key];
+                        }
+                    }
+                }
+                return newObj;
+            };
+
+            masterConfig = updateObj(masterConfig);
+
+            await fetch('/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(masterConfig)
+            });
+            updateMetricsFromConfig();
+            showNotice("Settings Applied Successfully", "success");
+        }
+
+        function showNotice(msg, type) {
+            // Simple toast implementation could go here
+            console.log(msg);
+        }
+
+        async function startTraining() {
+            await updateConfig();
+            const res = await fetch('/train/start', { method: 'POST' });
+            if (res.ok) {
+                toggleTrainingUI(true);
+                clearDashboard();
+                pollStatus();
+            }
+        }
+
+        async function stopTraining() {
+            await fetch('/train/stop', { method: 'POST' });
+        }
+
+        function toggleTrainingUI(running) {
+            document.getElementById('btn-start').classList.toggle('hidden', running);
+            document.getElementById('btn-stop').classList.toggle('hidden', !running);
+            document.getElementById('btn-stop').disabled = !running;
+            document.getElementById('training-banner').classList.toggle('hidden', !running);
+        }
+
+        function clearDashboard() {
+            chart.data.labels = [];
+            chart.data.datasets[0].data = [];
+            chart.update();
+            document.getElementById('result-gif').classList.add('hidden');
+            document.getElementById('result-placeholder').classList.remove('hidden');
+            document.getElementById('hover-overlay').classList.add('hidden');
+        }
+
+        async function pollStatus() {
+            const interval = setInterval(async () => {
+                const res = await fetch('/train/status');
+                const data = await res.json();
+
+                // Metrics
+                document.getElementById('metric-loss').innerText = data.loss ? data.loss.toExponential(4) : '-';
+                document.getElementById('metric-epoch').innerText = data.epoch;
+                document.getElementById('state-detail').innerText = data.message;
+
+                // Progress
+                if (data.total_epochs > 0) {
+                    const pct = Math.round((data.epoch / data.total_epochs) * 100);
+                    document.getElementById('progress-pct').innerText = `${pct}%`;
+                    document.getElementById('progress-bar-fill').style.width = `${pct}%`;
+                }
+
+                // Chart
+                if (data.history.length > chart.data.labels.length) {
+                    const start = chart.data.labels.length;
+                    for (let i = start; i < data.history.length; i++) {
+                        chart.data.labels.push(i + 1);
+                        chart.data.datasets[0].data.push(data.history[i]);
+                    }
+                    chart.update('none');
+                }
+
+                if (!data.is_running) {
+                    clearInterval(interval);
+                    toggleTrainingUI(false);
+                    if (data.message.includes("Finished")) {
+                        showResults(data.run_id);
+                    }
+                }
+            }, 800);
+        }
+
+        function showResults(runId) {
+            const gifUrl = runId ? `/history/${runId}/gif?t=${new Date().getTime()}` : '';
+            const img = document.getElementById('result-gif');
+            if (gifUrl) {
+                img.src = gifUrl;
+                img.classList.remove('hidden');
+                document.getElementById('result-placeholder').classList.add('hidden');
+                document.getElementById('hover-overlay').classList.remove('hidden');
+                document.getElementById('download-link').href = gifUrl;
+            }
+        }
+
+        async function loadHistory() {
+            const res = await fetch('/history');
+            const runs = await res.json();
+            const list = document.getElementById('history-list');
+
+            if (runs.length === 0) {
+                list.innerHTML = '<p class="text-xs text-slate-400 italic">No runs recorded yet.</p>';
+                return;
+            }
+
+            list.innerHTML = runs.map(run => {
+                const mode = run.summary.mode || 'pulsed';
+                const loss = run.summary.final_loss ? run.summary.final_loss.toExponential(2) : (run.has_gif ? 'Success' : 'Incomplete');
+                const epochs = run.summary.epochs || '-';
+
+                return `
+                    <div onclick="viewRun('${run.id}')" class="bg-slate-50 p-3 rounded-lg border border-slate-200 cursor-pointer hover:border-blue-300 transition-all group">
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="text-[10px] font-bold text-slate-800">${run.id}</span>
+                            <span class="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-bold uppercase">${mode}</span>
+                        </div>
+                        <div class="flex items-center text-[10px] text-slate-500 space-x-2">
+                            <span>Loss: ${loss}</span>
+                            <span>•</span>
+                            <span>${epochs} epochs</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function viewRun(runId) {
+            showNotice("Loading Archive: " + runId);
+
+            // Fetch detailed run data
+            const res = await fetch(`/history/${runId}/data`);
+            const data = await res.json();
+
+            // Update Metrics
+            if (data.summary) {
+                document.getElementById('metric-loss').innerText = data.summary.final_loss ? data.summary.final_loss.toExponential(4) : '-';
+                document.getElementById('metric-epoch').innerText = data.summary.epochs;
+                document.getElementById('metric-target').innerText = data.summary.epochs;
+            }
+
+            // Update parameters sidebar from archived config
+            if (data.config) {
+                const mapFields = (obj, prefix = '') => {
+                    for (let key in obj) {
+                        const fullKey = prefix ? `${prefix}-${key}` : key;
+                        if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                            mapFields(obj[key], fullKey);
+                        } else {
+                            const el = document.getElementById(fullKey);
+                            if (el) el.value = obj[key];
+                        }
+                    }
+                };
+                mapFields(data.config);
+                masterConfig = data.config; // Update local master config too
+            }
+
+            // Update Chart
+            if (data.history && data.history.length > 0) {
+                chart.data.labels = data.history.map((_, i) => i + 1);
+                chart.data.datasets[0].data = data.history;
+                chart.update();
+            }
+
+            // Show GIF
+            showResults(runId);
+
+            // Visual indicators
+            document.getElementById('state-msg').innerText = "Viewing Archived Run";
+            document.getElementById('state-detail').innerText = runId;
+        }
+
+        loadConfig();
+    </script>
+</body>
+
+</html>
