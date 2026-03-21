@@ -1,0 +1,50 @@
+{
+  "laser": {
+    "wavelength": 1.06e-05,
+    "rep_rate": 8000,
+    "pulse_duration": 1.5e-05,
+    "avg_power": 10,
+    "beam_radius": 6.2e-05,
+    "scan_velocity": 0.06,
+    "mode": "pulsed",
+    "continuous_power": 10,
+    "num_pulses": 8,
+    "simulation_time": null
+  },
+  "material": {
+    "density": 2200,
+    "specific_heat": 670,
+    "conductivity": 1.4,
+    "absorption": 5000,
+    "reflectivity": 0.25,
+    "initial_temperature": 300
+  },
+  "pinn": {
+    "num_gaussians": 1,
+    "gaussian_spacing": 0.5,
+    "sigma0": 0.1,
+    "laser_amplitude": 1,
+    "collocation_points": {
+      "x": 20,
+      "y": 20,
+      "z": 20,
+      "t": 20
+    },
+    "visualization_points": {
+      "x": 30,
+      "y": 30,
+      "z": 30,
+      "t": 20
+    }
+  },
+  "training": {
+    "num_epochs": 100,
+    "learning_rate": 0.001,
+    "device": "auto",
+    "loss_weights": {
+      "pde": 1,
+      "ic": 1,
+      "bc": 2
+    }
+  }
+}

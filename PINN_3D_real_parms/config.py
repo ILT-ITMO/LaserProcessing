@@ -35,7 +35,8 @@ class LaserConfig:
                 "mode": "pulsed",               # Режим: "pulsed" или "continuous"
                 "continuous_power": 10.0,       # Мощность непрерывного лазера [Вт]
                 "num_pulses": 8,                # Количество импульсов (для импульсного режима)
-                "simulation_time": None         # Время моделирования [с] (None - вычисляется автоматически)
+                "simulation_time": None,        # Время моделирования [с] (None - вычисляется автоматически)
+                "M2": 1.5                       # Фактор качества пучка (расходимость)
             },
             
             # Параметры материала
@@ -56,6 +57,12 @@ class LaserConfig:
                 "laser_amplitude": 1.0,
                 "collocation_points": {"x": 20, "y": 20, "z": 20, "t": 20},
                 "visualization_points": {"x": 30, "y": 30, "z": 30, "t": 20}
+            },
+            
+            # Параметры гауссового кратера (геометрия канавки)
+            "crater": {
+                "peak_depth_um": 30.0,   # Максимальная глубина кратера [мкм]
+                "width_99_um": 145.0     # Полная ширина на уровне 99% площади [мкм]
             },
             
             # Параметры обучения
@@ -224,11 +231,17 @@ class LaserConfig:
         self.GAUSSIAN_SPACING = self.config["pinn"]["gaussian_spacing"]
         self.SIGMA0 = self.config["pinn"]["sigma0"]
         
+        # Параметры гауссового кратера (в мкм)
+        crater_cfg = self.config.get("crater", {})
+        self.CRATER_PEAK_DEPTH_UM = crater_cfg.get("peak_depth_um", 30.0)
+        self.CRATER_WIDTH_99_UM = crater_cfg.get("width_99_um", 145.0)
+        
         # Другие параметры для обратной совместимости
         self.LASER_WAVELENGTH = laser["wavelength"]
         self.LASER_BEAM_RADIUS = laser["beam_radius"]
         self.LASER_SCAN_VELOCITY = laser["scan_velocity"]
         self.LASER_CONTINUOUS_POWER = laser["continuous_power"]
+        self.LASER_M2 = laser.get("M2", 1.5)
         
         # Обновляем глобальные переменные
         self.update_globals()

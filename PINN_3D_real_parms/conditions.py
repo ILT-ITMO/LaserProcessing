@@ -62,7 +62,8 @@ def laser_source_term(x_tensor, y_tensor, z_tensor, t_tensor,
                      pulse_sigma=None,
                      pulse_period=None,
                      beam_sigma=None,
-                     laser_mode=None):
+                     laser_mode=None,
+                     m2_factor=None):
     """
     Функция лазерного источника тепла в безразмерных координатах.
     Определяет распределение тепла, генерируемого лазером, в пространстве и времени.
@@ -77,6 +78,7 @@ def laser_source_term(x_tensor, y_tensor, z_tensor, t_tensor,
         pulse_sigma (float, optional): Ширина импульса. По умолчанию берется из config.
         pulse_period (float, optional): Период импульсов. По умолчанию берется из config.
         beam_sigma (float, optional): Ширина лазерного пучка. По умолчанию берется из config.
+        m2_factor (float, optional): Фактор качества пучка M² (расходимость). По умолчанию берется из config.
         laser_mode (str, optional): Режим лазера ("pulsed" или "continuous"). Если None, берется из config.
     
     Returns:
@@ -94,10 +96,14 @@ def laser_source_term(x_tensor, y_tensor, z_tensor, t_tensor,
         pulse_period = config.LASER_PULSE_PERIOD_NORM
     if beam_sigma is None:
         beam_sigma = config.LASER_SIGMA_NORM
+    if m2_factor is None:
+        m2_factor = getattr(config, "LASER_M2", 1.5)
     
     # Пространственное распределение - СТАТИЧНЫЙ пучок в центре (0,0)
+    # Учитываем качество пучка M² как масштаб ширины (хуже качество -> шире пятно)
     r2 = x_tensor**2 + y_tensor**2  # центр всегда в (0,0)
-    spatial_dist = amplitude * torch.exp(-r2 / (beam_sigma**2))
+    effective_beam_sigma = beam_sigma * m2_factor
+    spatial_dist = amplitude * torch.exp(-r2 / (effective_beam_sigma**2))
     
     # Временное распределение в зависимости от режима
     if laser_mode == "continuous":

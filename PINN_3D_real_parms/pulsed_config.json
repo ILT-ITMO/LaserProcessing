@@ -9,7 +9,8 @@
     "mode": "pulsed",
     "continuous_power": 10.0,
     "num_pulses": 8,
-    "simulation_time": null
+    "simulation_time": null,
+    "M2": 1.5
   },
   
   "material": {
@@ -38,6 +39,11 @@
       "z": 30,
       "t": 20
     }
+  },
+  
+  "crater": {
+    "peak_depth_um": 30.0,
+    "width_99_um": 145.0
   },
   
   "training": {
