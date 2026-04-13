@@ -4,13 +4,13 @@
     "rep_rate": 8000.0,
     "pulse_duration": 15e-6,
     "avg_power": 10.0,
-    "beam_radius": 62e-6,
+    "beam_radius": 75e-6,
     "scan_velocity": 0.06,
     "mode": "continuous",
-    "continuous_power": 5.0,
+    "continuous_power": 10.0,
     "num_pulses": 1,
-    "simulation_time": 2e-3,
-    "M2": 1.5
+    "simulation_time": 0.666665e-3,
+    "M2": 2.5
   },
   
   "material": {
@@ -54,6 +54,20 @@
       "pde": 1.0,
       "ic": 1.0,
       "bc": 2.0
-    }
+    },
+    "log_every": 100,
+    "inverse_mode": "coef",
+    "pretrained_checkpoint_path": null,
+    "pretrained_strict": true
+  },
+
+  "inverse": {
+    "enabled": true,
+    "initial_diff_coef": 1.0,
+    "initial_m2": null,
+    "m2_eps": 1e-6,
+    "crater_loss_weight": 1.0,
+    "target_temperature": 1900.0,
+    "crater_depth_threshold": 0.01
   }
 }

@@ -1,6 +1,66 @@
 import torch
 import config
 import math
+import numpy as np
+
+def compute_crater_loss(model, x_norm, y_norm, z_norm, t_norm,
+                        target_temp=1900.0, depth_threshold=0.01):
+    """
+    Вычисляет loss для кратера в НОРМИРОВАННЫХ координатах.
+    Все величины приводятся к безразмерному виду.
+    
+    Args:
+        x_norm, y_norm, z_norm, t_norm: НОРМИРОВАННЫЕ координаты (вход PINN)
+        target_temp: целевая температура в КЕЛЬВИНАХ
+        depth_threshold: порог глубины в МИКРОМЕТРАХ
+    """
+    # 1. Конвертируем нормированные координаты в физические (для геометрии кратера)
+    x_phys = x_norm * config.CHARACTERISTIC_LENGTH * 1e6  # мкм
+    y_phys = y_norm * config.CHARACTERISTIC_LENGTH * 1e6  # мкм
+    z_phys = z_norm * config.CHARACTERISTIC_LENGTH * 1e6  # мкм
+    
+    # 2. Параметры кратера (физические)
+    max_depth_um = config.CRATER_PEAK_DEPTH_UM
+    crater_width_um = config.CRATER_WIDTH_99_UM
+    max_height_um = max_depth_um
+    
+    # 3. Геометрия кратера (физическая)
+    R = crater_width_um / 2.0
+    sigma_um = R / np.sqrt(-2 * np.log(0.01))
+    r_squared = x_phys**2 + y_phys**2
+    horizontal = torch.exp(-r_squared / (2.0 * sigma_um**2))
+    
+    vertical = torch.zeros_like(z_phys)
+    mask_down = z_phys < 0
+    vertical[mask_down] = torch.exp(z_phys[mask_down] / (max_depth_um / 2))
+    mask_up = (z_phys >= 0) & (z_phys <= max_height_um)
+    vertical[mask_up] = (1.0 - z_phys[mask_up] / max_height_um) ** 2
+    vertical[z_phys == 0] = 1.0
+    
+    crater_depth = max_depth_um * horizontal * vertical  # мкм
+    
+    # 4. Маска в физических координатах
+    mask = crater_depth > depth_threshold
+    
+    if not mask.any():
+        return torch.tensor(0.0, device=x_norm.device, dtype=x_norm.dtype)
+    
+    # 5. Предсказанная НОРМИРОВАННАЯ температура от PINN
+    u_norm = model(x_norm, y_norm, z_norm, t_norm).squeeze()
+    
+    # 6. Конвертируем целевую температуру в НОРМИРОВАННЫЙ вид
+    target_temp_norm = (target_temp - config.INITIAL_TEMPERATURE) / config.CHARACTERISTIC_TEMPERATURE
+    
+    # 7. Штрафуем ТОЛЬКО в нормированном пространстве
+    #    Важно: и предсказание, и цель - в одних единицах (безразмерные)
+    u_pred_crater = u_norm[mask]
+    
+    # ReLU: штрафуем, если предсказание НИЖЕ целевого
+    diff = target_temp_norm - u_pred_crater
+    loss_crater = torch.mean(torch.relu(diff)**2)
+    
+    return loss_crater
+
 
 def compute_centers(n, spacing, device):
     """

@@ -332,7 +332,7 @@ def add_isotherm_plot(ax, U_physical, x_phys, y_phys, z_phys, time_idx,
 # АНИМАЦИЯ
 # ============================================================================
 
-def create_animation(U_data, x_plot, y_plot, z_plot, t_plot, title, filename):
+def create_animation(U_data, x_plot, y_plot, z_plot, t_plot, title, filename, *, metrics=None):
     """Создает анимацию распределения температуры."""
     U_physical = convert_to_physical_temperature(U_data)
     x_phys, y_phys, z_phys, (x_min, x_max), (y_min, y_max), (z_min, z_max) = _get_physical_coords(x_plot, y_plot, z_plot)
@@ -363,6 +363,20 @@ def create_animation(U_data, x_plot, y_plot, z_plot, t_plot, title, filename):
     center_x, center_y = len(x_plot) // 2, len(y_plot) // 2
     
     fig = plt.figure(figsize=FIG_SIZE_ANIM)
+    metrics_text = None
+    if isinstance(metrics, dict) and ("mse" in metrics or "mae" in metrics):
+        try:
+            mse_val = metrics.get("mse")
+            mae_val = metrics.get("mae")
+            parts = []
+            if mse_val is not None:
+                parts.append(f"MSE: {float(mse_val):.3g}")
+            if mae_val is not None:
+                parts.append(f"MAE: {float(mae_val):.3g}")
+            if parts:
+                metrics_text = "МЕТРИКИ:\n" + "\n".join(parts) + "\n"
+        except Exception:
+            metrics_text = None
     
     def update(frame):
         fig.clear()
@@ -611,6 +625,8 @@ def create_animation(U_data, x_plot, y_plot, z_plot, t_plot, title, filename):
         summary += f"• Глубина: {depth:.1f} мкм\n" if depth else "• Глубина: не достигнута\n"
         summary += f"• Макс. температура: {max_temp:.1f} K\n"
         summary += f"• Перегрев: {max_temp - config.INITIAL_TEMPERATURE:.1f} K\n"
+        if metrics_text:
+            summary += "\n" + metrics_text
         
         if width and depth:
             summary += f"• Отношение Ш/Г: {width/depth:.2f}"
@@ -620,7 +636,23 @@ def create_animation(U_data, x_plot, y_plot, z_plot, t_plot, title, filename):
         
         mode_text = "ИМПУЛЬСНЫЙ" if config.LASER_MODE == "pulsed" else "НЕПРЕРЫВНЫЙ"
         pulse_info = f" (Импульс {pulse_num}/{config.NUM_PULSES})" if config.LASER_MODE == "pulsed" else ""
-        plt.suptitle(f'{title}\nРежим: {mode_text}, Время: {t_cur:.1f} мкс{pulse_info}',
+        metrics_line = ""
+        if metrics_text:
+            # Однострочная версия для заголовка
+            try:
+                mse_val = metrics.get("mse") if isinstance(metrics, dict) else None
+                mae_val = metrics.get("mae") if isinstance(metrics, dict) else None
+                bits = []
+                if mse_val is not None:
+                    bits.append(f"MSE={float(mse_val):.3g}")
+                if mae_val is not None:
+                    bits.append(f"MAE={float(mae_val):.3g}")
+                if bits:
+                    metrics_line = " | " + ", ".join(bits)
+            except Exception:
+                metrics_line = ""
+
+        plt.suptitle(f'{title}\nРежим: {mode_text}, Время: {t_cur:.1f} мкс{pulse_info}{metrics_line}',
                     fontsize=14, y=0.98)
         plt.tight_layout()
         

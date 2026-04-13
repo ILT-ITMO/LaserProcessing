@@ -90,7 +90,7 @@ def background_train(cfg_dict, run_id):
         
         # Init model
         model = PINN([4, 128, 128, 128, 1]).to(device)
-        diff_coef = 1.0
+        diff_coef = float(getattr(config, "INITIAL_DIFF_COEF", 1.0))
         
         num_epochs = config.CONFIG.config["training"]["num_epochs"]
         state.total_epochs = num_epochs

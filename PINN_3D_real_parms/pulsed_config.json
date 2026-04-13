@@ -54,6 +54,20 @@
       "pde": 1.0,
       "ic": 1.0,
       "bc": 2.0
-    }
+    },
+    "log_every": 100,
+    "inverse_mode": "classic",
+    "pretrained_checkpoint_path": null,
+    "pretrained_strict": true
+  },
+
+  "inverse": {
+    "enabled": false,
+    "initial_diff_coef": 1.0,
+    "initial_m2": null,
+    "m2_eps": 1e-6,
+    "crater_loss_weight": 1.0,
+    "target_temperature": 1900.0,
+    "crater_depth_threshold": 0.01
   }
 }

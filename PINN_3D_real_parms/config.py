@@ -70,7 +70,25 @@ class LaserConfig:
                 "num_epochs": 1000,
                 "learning_rate": 1e-3,
                 "device": "auto",  # "auto", "cpu", "cuda", "mps"
-                "loss_weights": {"pde": 1.0, "ic": 1.0, "bc": 2.0}
+                "loss_weights": {"pde": 1.0, "ic": 1.0, "bc": 2.0},
+                "log_every": 100,
+                # Режим обучения параметров:
+                # - "classic": классическое обучение (все параметры физики фиксированы)
+                # - "coef": отпустить coef_tensor (коэффициент диффузии/теплопроводности в безразмерном виде)
+                # - "m2": отпустить M² (качество пучка)
+                "inverse_mode": "classic",
+                "pretrained_checkpoint_path": None,
+                "pretrained_strict": True
+            },
+
+            "inverse": {
+                "enabled": False,               # Включить обратную задачу
+                "initial_diff_coef": 1.0,      # Начальное значение коэффициента теплопроводности
+                "initial_m2": None,            # Начальное значение M² (None -> взять из laser.M2)
+                "m2_eps": 1e-6,                # Эпсилон для стабилизации (M² всегда > 0)
+                "crater_loss_weight": 1.0,     # Вес потери по кратеру
+                "target_temperature": 1900.0,  # Целевая температура для кратера (K)
+                "crater_depth_threshold": 0.01 # Порог глубины кратера для маски (мкм)
             }
         }
         
@@ -242,6 +260,24 @@ class LaserConfig:
         self.LASER_SCAN_VELOCITY = laser["scan_velocity"]
         self.LASER_CONTINUOUS_POWER = laser["continuous_power"]
         self.LASER_M2 = laser.get("M2", 1.5)
+
+        inverse = self.config.get("inverse", {})
+        self.INVERSE_ENABLED = inverse.get("enabled", False)
+        self.INITIAL_DIFF_COEF = inverse.get("initial_diff_coef", 1.0)
+        self.INITIAL_M2 = inverse.get("initial_m2", None)
+        self.M2_EPS = inverse.get("m2_eps", 1e-6)
+        self.CRATER_LOSS_WEIGHT = inverse.get("crater_loss_weight", 1.0)
+        self.CRATER_TARGET_TEMP = inverse.get("target_temperature", 1900.0)
+        self.CRATER_DEPTH_THRESHOLD = inverse.get("crater_depth_threshold", 0.01)
+
+        training = self.config.get("training", {})
+        self.LOG_EVERY = training.get("log_every", 100)
+        self.INVERSE_MODE = training.get("inverse_mode", None)
+        # Обратная совместимость: если inverse.enabled=True и inverse_mode не задан, считаем что отпущен coef
+        if self.INVERSE_MODE is None:
+            self.INVERSE_MODE = "coef" if self.INVERSE_ENABLED else "classic"
+        self.PRETRAINED_CHECKPOINT_PATH = training.get("pretrained_checkpoint_path", None)
+        self.PRETRAINED_STRICT = training.get("pretrained_strict", True)
         
         # Обновляем глобальные переменные
         self.update_globals()

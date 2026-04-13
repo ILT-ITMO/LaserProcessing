@@ -7,6 +7,7 @@
 ## 📋 Содержание
 
 - [Описание проекта](#описание-проекта)
+- [Обновления (метрики и обратная задача)](#обновления-метрики-и-обратная-задача)
 - [Архитектура](#архитектура)
 - [Структура модуля PINN_3D_real_parms](#структура-модуля-pinn_3d_real_parms)
 - [Ключевые компоненты](#ключевые-компоненты)
@@ -34,6 +35,41 @@
 - ✅ **Визуализация** - анимации, 3D срезы, графики профилей
 - ✅ **Гибкая конфигурация** - JSON-файлы для сохранения и загрузки параметров
 - ✅ **GPU поддержка** - автоматический выбор поддерживаемого устройства (MPS/CUDA/CPU)
+- ✅ **Метрики качества** - расчет MSE/MAE между линией модели и линией кратера (1900 K) + вывод на GIF
+- ✅ **Обратная задача** - можно отпустить физический параметр и оптимизировать его по loss (coef_tensor или M²)
+
+---
+
+## 🔄 Обновления (метрики и обратная задача)
+
+### Метрики MSE/MAE после обучения
+
+После завершения обучения автоматически вычисляются метрики:
+- **MSE** и **MAE** между:
+  - **смоделированной линией** на поверхности \(y=0\) (профиль температуры вдоль \(x\))
+  - **референсной “экспериментальной” линией кратера**, генерируемой `laser_crater_3d` и приведенной к шкале 1900 K
+
+Метрики:
+- сохраняются в `results/<mode>/metrics_<mode>.json`
+- сохраняются сырые линии для анализа:
+  - `metrics_x_um_<mode>.npy`
+  - `metrics_simulated_line_K_<mode>.npy`
+  - `metrics_experimental_line_K_<mode>.npy`
+
+### Метрики на GIF
+
+В `visual.create_animation()` метрики (если доступны) добавляются:
+- в **заголовок** GIF (короткая строка)
+- в панель **“СВОДКА”** на кадре (блок “МЕТРИКИ”)
+
+### Отпуск параметров: `coef_tensor` или M²
+
+Поддерживается выбор режима обучения через `training.inverse_mode`:
+- **`classic`** — классическое обучение (все физические параметры фиксированы)
+- **`coef`** — отпускается и оптимизируется **`coef_tensor`** (безразмерный коэффициент в PDE)
+- **`m2`** — отпускается и оптимизируется **`M²`** (качество пучка), влияет на `laser_source_term`
+
+Для стабильности \(M^2>0\) используется параметризация через `softplus` + `m2_eps`.
 
 ---
 
@@ -170,7 +206,17 @@ PINN_3D_real_parms/
     "training": {
         "num_epochs": 1000,
         "learning_rate": 1e-3,
-        "loss_weights": {"pde": 1.0, "ic": 1.0, "bc": 2.0}
+        "loss_weights": {"pde": 1.0, "ic": 1.0, "bc": 2.0},
+        "inverse_mode": "classic"           # classic | coef | m2
+    },
+    "inverse": {
+        "enabled": false,                  # включает crater-loss
+        "initial_diff_coef": 1.0,          # стартовое значение coef (для режима coef)
+        "initial_m2": null,                # стартовое M² (для режима m2), null -> взять laser.M2
+        "m2_eps": 1e-6,                    # eps для M² (>0)
+        "crater_loss_weight": 1.0,
+        "target_temperature": 1900.0,
+        "crater_depth_threshold": 0.01
     }
 }
 ```
@@ -473,11 +519,19 @@ results/
 │   ├── temperature_field_continuous.npy   # Поле температуры
 │   ├── loss_history_continuous.npy        # История потерь
 │   └── learning_curve_continuous.png      # График обучения
+│   ├── metrics_continuous.json            # MSE/MAE + метаданные
+│   ├── metrics_x_um_continuous.npy        # x (мкм)
+│   ├── metrics_simulated_line_K_continuous.npy
+│   └── metrics_experimental_line_K_continuous.npy
 │
 └── pulsed/                          # Результаты пульсного режима
     ├── temperature_field_pulsed.npy
     ├── loss_history_pulsed.npy
     └── learning_curve_pulsed.png
+    ├── metrics_pulsed.json
+    ├── metrics_x_um_pulsed.npy
+    ├── metrics_simulated_line_K_pulsed.npy
+    └── metrics_experimental_line_K_pulsed.npy
 
 animations/
 ├── pinn_solution_continuous.gif     # Анимация поля температуры
@@ -576,8 +630,8 @@ Awareness//Reviews on Advanced Materials and Technologies, 2025, Vol. 7, No. 2, 
 
 ---
 
-**Последнее обновление:** Декабрь 2025
+**Последнее обновление:** Апрель 2026
 
-**Версия документации:** 2.0.0 (Обновлена согласно реальной реализации)
+**Версия документации:** 2.1.0 (метрики + выбор inverse_mode + оптимизация M²)
 
 **Статус проекта:** ✅ Активная разработка

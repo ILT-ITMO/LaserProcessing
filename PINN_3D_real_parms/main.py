@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import sys
-from visual import visualize_laser_pulses, visualize_laser_spatial_profile, create_animation
+import json
+from visual import visualize_laser_pulses, visualize_laser_spatial_profile, create_animation, laser_crater_3d
 from pinn import PINN, train_pinn
 from conditions import convert_to_physical_coords, convert_to_physical_temperature
 import config
@@ -64,7 +65,7 @@ def run_simulation(config_file=None, laser_mode=None):
 
     # Создаем и обучаем модель
     model = PINN([4, 128, 128, 128, 1]).to(device)
-    diff_coef = 1.0  # Безразмерный коэффициент = 1
+    diff_coef = float(getattr(config, "INITIAL_DIFF_COEF", 1.0))
 
     print(f"\nОбучение 3D PINN в режиме {mode}...")
     loss_hist = train_pinn(
@@ -73,7 +74,9 @@ def run_simulation(config_file=None, laser_mode=None):
         num_epochs=config.CONFIG.config["training"]["num_epochs"],
         lr=config.CONFIG.config["training"]["learning_rate"],
         device=device,
-        laser_mode=mode
+        laser_mode=mode,
+        pretrained_checkpoint_path=config.CONFIG.config.get("training", {}).get("pretrained_checkpoint_path"),
+        pretrained_strict=config.CONFIG.config.get("training", {}).get("pretrained_strict", True),
     )
 
     # Подготовка данных для предсказания
@@ -102,12 +105,75 @@ def run_simulation(config_file=None, laser_mode=None):
         # Конвертация в физические величины
         U_pred_physical = convert_to_physical_temperature(U_pred_norm)
 
+    metrics = None
+    # ---------------------------------------------------------------------
+    # Метрики (MSE/MAE) между смоделированной изотермой 1900K и линией кратера
+    # ---------------------------------------------------------------------
+    try:
+        # Физические координаты (мкм) для сетки визуализации
+        x_phys = np.array(x_plot) * config.CHARACTERISTIC_LENGTH * 1e6
+        y_phys = np.array(y_plot) * config.CHARACTERISTIC_LENGTH * 1e6
+        z_phys = np.array(z_plot) * config.CHARACTERISTIC_LENGTH * 1e6
+
+        time_idx = -1  # после окончания моделирования
+        isotherm_temp = float(getattr(config, "CRATER_TARGET_TEMP", 1900.0))
+
+        center_y = len(y_phys) // 2
+        surface_z_idx = len(z_phys) - 1  # в этой сетке поверхность соответствует z=0 -> последний индекс
+
+        simulated_line = U_pred_physical[:, center_y, surface_z_idx, time_idx].astype(np.float64)
+
+        crater_field = laser_crater_3d(
+            x_phys, y_phys, z_phys,
+            max_depth_um=getattr(config, "CRATER_PEAK_DEPTH_UM", 30.0),
+            crater_width_um=getattr(config, "CRATER_WIDTH_99_UM", 145.0),
+            max_height_um=getattr(config, "CRATER_PEAK_DEPTH_UM", 30.0),
+            decay_length_um=getattr(config, "CRATER_DECAY_LENGTH_UM", 30.0),
+        )
+        crater_surface = crater_field[:, :, np.argmin(np.abs(z_phys - 0.0))]
+        crater_peak = float(getattr(config, "CRATER_PEAK_DEPTH_UM", 30.0))
+        crater_line = crater_surface[:, center_y].astype(np.float64)
+        experimental_line = (isotherm_temp - crater_peak + crater_line).astype(np.float64)
+
+        # На всякий случай приводим к общему размеру
+        n = int(min(simulated_line.shape[0], experimental_line.shape[0]))
+        simulated_line = simulated_line[:n]
+        experimental_line = experimental_line[:n]
+        x_phys_line = x_phys[:n]
+
+        mse = float(np.mean((simulated_line - experimental_line) ** 2))
+        mae = float(np.mean(np.abs(simulated_line - experimental_line)))
+
+        metrics = {
+            "mode": str(mode),
+            "time_idx": int(time_idx),
+            "isotherm_temp_K": float(isotherm_temp),
+            "mse": mse,
+            "mae": mae,
+        }
+
+        metrics_path = os.path.join(output_dir, f"metrics_{mode}.json")
+        with open(metrics_path, "w", encoding="utf-8") as f:
+            json.dump(metrics, f, ensure_ascii=False, indent=2)
+
+        print("\nМетрики сравнения (смоделированная линия vs кратерная линия):")
+        print(f"  MSE = {mse:.6g}")
+        print(f"  MAE = {mae:.6g}")
+        print(f"  Файл: {metrics_path}")
+
+        # Дополнительно сохраняем сравниваемые линии для последующего анализа
+        np.save(os.path.join(output_dir, f"metrics_x_um_{mode}.npy"), x_phys_line)
+        np.save(os.path.join(output_dir, f"metrics_simulated_line_K_{mode}.npy"), simulated_line)
+        np.save(os.path.join(output_dir, f"metrics_experimental_line_K_{mode}.npy"), experimental_line)
+    except Exception as e:
+        print(f"\n[WARN] Не удалось посчитать MSE/MAE: {e}")
+
     print("\nСоздание анимаций...")
     mode_title = "Непрерывный" if mode == "continuous" else "Импульсный"
     title = f'PINN Solution: Нагрев кварца лазером\n{mode_title} режим, СТАТИЧНЫЙ пучок'
     filename = f'animations/pinn_solution_{mode}.gif'
     
-    create_animation(U_pred_norm, x_plot, y_plot, z_plot, t_plot, title, filename)
+    create_animation(U_pred_norm, x_plot, y_plot, z_plot, t_plot, title, filename, metrics=metrics)
 
     # График обучения
     plt.figure(figsize=(8,5))

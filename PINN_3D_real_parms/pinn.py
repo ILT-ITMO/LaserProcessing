@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from tqdm import tqdm
 from conditions import laser_source_term
 import config
@@ -61,8 +62,27 @@ class PINN(nn.Module):
         return self.network(inputs)
 
 
-def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll: torch.Tensor, 
-                     t_coll: torch.Tensor, diff_coef, laser_mode=None):
+def _load_pretrained_into_model(model: nn.Module, checkpoint_path: str, device: str = "cpu", strict: bool = True):
+    """
+    Loads weights into an existing model instance.
+    Supports both raw state_dict checkpoints and dict checkpoints with 'model_state_dict'.
+    """
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    model.load_state_dict(state_dict, strict=strict)
+    return checkpoint
+
+
+
+def compute_pinn_loss(model, x_coll, y_coll, z_coll, t_coll, 
+                      diff_coef_param,  # теперь тензор, а не float
+                      laser_mode=None,
+                      m2_factor=None,
+                      inverse_enabled=True,
+                      crater_loss_weight=1.0,
+                      crater_target_temp=1900.0,
+                      crater_depth_threshold=0.01,
+                      return_components: bool = False):    
     """
     Computes the loss for a Physics-Informed Neural Network (PINN) model simulating laser-induced heat transfer.
     
@@ -80,7 +100,11 @@ def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll:
     Returns:
         The computed loss value (a scalar tensor).
     """
-    coef_tensor = torch.tensor(diff_coef, dtype=x_coll.dtype, device=x_coll.device)
+    # Важно: не использовать torch.tensor(tensor), иначе граф будет оборван.
+    if torch.is_tensor(diff_coef_param):
+        coef_tensor = diff_coef_param.to(dtype=x_coll.dtype, device=x_coll.device)
+    else:
+        coef_tensor = torch.tensor(diff_coef_param, dtype=x_coll.dtype, device=x_coll.device)
     
     if laser_mode is None:
         laser_mode = config.LASER_MODE
@@ -104,7 +128,11 @@ def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll:
     u_zz = torch.autograd.grad(u_z, z_coll, grad_outputs=torch.ones_like(u_z), create_graph=True)[0]    
     
     # Источник тепла с учетом режима лазера
-    source_term = laser_source_term(x_coll, y_coll, z_coll, t_coll, laser_mode=laser_mode)
+    source_term = laser_source_term(
+        x_coll, y_coll, z_coll, t_coll,
+        laser_mode=laser_mode,
+        m2_factor=m2_factor,
+    )
     
     # Безразмерное уравнение теплопроводности
     loss_pde = torch.mean((u_t - coef_tensor * (u_xx + u_yy + u_zz) - source_term) ** 2)
@@ -166,11 +194,54 @@ def compute_pinn_loss(model, x_coll: torch.Tensor, y_coll: torch.Tensor, z_coll:
     
     loss_bc += torch.mean(u_bottom_z_deriv ** 2) + torch.mean(u_top_z_deriv ** 2)  # ∂u/∂z = 0
 
-    w_pde, w_ic, w_bc = 1.0, 1.0, 2.0
-    
-    return w_pde * loss_pde + w_ic * loss_ic + w_bc * loss_bc
+    loss_crater = torch.tensor(0.0, device=x_coll.device)
+    if inverse_enabled:
+        from conditions import compute_crater_loss
+        # Для loss кратера используем те же точки коллокации (или отдельную сетку)
+        loss_crater = compute_crater_loss(
+            model, x_coll, y_coll, z_coll, t_coll,
+            target_temp=crater_target_temp,
+            depth_threshold=crater_depth_threshold
+        )
 
-def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3, device='cpu', laser_mode=None, progress_callback=None):
+
+    w_pde, w_ic, w_bc = 1.0, 1.0, 2.0
+
+    total_loss = (
+        w_pde * loss_pde
+        + w_ic * loss_ic
+        + w_bc * loss_bc
+        + crater_loss_weight * loss_crater
+    )
+
+    if return_components:
+        return total_loss, {
+            "loss_pde": loss_pde.detach(),
+            "loss_ic": loss_ic.detach(),
+            "loss_bc": loss_bc.detach() if torch.is_tensor(loss_bc) else torch.tensor(loss_bc, device=x_coll.device),
+            "loss_crater": loss_crater.detach(),
+            "coef_tensor": coef_tensor.detach(),
+        }
+
+    return total_loss
+
+
+
+def train_pinn(
+    model,
+    diff_coef,
+    num_epochs=200,
+    lr=1e-3,
+    device='cpu',
+    laser_mode=None,
+    progress_callback=None,
+    *,
+    inverse_enabled: bool | None = None,
+    inverse_mode: str | None = None,
+    pretrained_checkpoint_path: str | None = None,
+    pretrained_strict: bool = True,
+    log_every: int | None = None,
+):
     """
     Trains a Physics-Informed Neural Network (PINN) to model laser-induced heat transfer.
     
@@ -196,7 +267,58 @@ def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3, device='cpu', laser_mo
         list: A list containing the loss value for each epoch during training.
     """
     model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+
+    # Настройки по умолчанию из конфига
+    if inverse_enabled is None:
+        inverse_enabled = getattr(config, "INVERSE_ENABLED", False)
+    if log_every is None:
+        log_every = getattr(config, "LOG_EVERY", 100)
+    if inverse_mode is None:
+        inverse_mode = getattr(config, "INVERSE_MODE", None)
+        if inverse_mode is None:
+            inverse_mode = "coef" if inverse_enabled else "classic"
+
+    inverse_mode_norm = str(inverse_mode).strip().lower()
+    if inverse_mode_norm in {"none", "false", "off"}:
+        inverse_mode_norm = "classic"
+    if inverse_mode_norm not in {"classic", "coef", "m2"}:
+        raise ValueError(f"Unknown training.inverse_mode='{inverse_mode}'. Expected: classic|coef|m2.")
+
+    if pretrained_checkpoint_path:
+        _load_pretrained_into_model(model, pretrained_checkpoint_path, device=device, strict=pretrained_strict)
+
+    # Параметры оптимизации: можно отпустить coef_tensor или M² (или ничего)
+    trainable_params = list(model.parameters())
+
+    # 1) coef_tensor
+    if inverse_mode_norm == "coef":
+        diff_coef_param = nn.Parameter(
+            torch.tensor(float(diff_coef), device=device, dtype=torch.float32),
+            requires_grad=True,
+        )
+        trainable_params.append(diff_coef_param)
+    else:
+        diff_coef_param = diff_coef
+
+    # 2) M² (через softplus, чтобы всегда было > 0)
+    m2_raw_param = None
+    if inverse_mode_norm == "m2":
+        m2_init = getattr(config, "INITIAL_M2", None)
+        if m2_init is None:
+            m2_init = getattr(config, "LASER_M2", 1.5)
+        m2_eps = float(getattr(config, "M2_EPS", 1e-6))
+
+        # Инициализируем raw так, чтобы softplus(raw) ~= m2_init
+        # softplus^{-1}(y) = log(exp(y)-1)
+        y = max(float(m2_init) - m2_eps, 1e-6)
+        raw_init = float(torch.log(torch.expm1(torch.tensor(y))).item())
+        m2_raw_param = nn.Parameter(
+            torch.tensor(raw_init, device=device, dtype=torch.float32),
+            requires_grad=True,
+        )
+        trainable_params.append(m2_raw_param)
+
+    optimizer = optim.Adam(trainable_params, lr=lr)
 
     if laser_mode is None:
         laser_mode = config.LASER_MODE
@@ -222,8 +344,29 @@ def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3, device='cpu', laser_mo
 
     for epoch in iterator:
         optimizer.zero_grad()
-        loss = compute_pinn_loss(model, x_coll, y_coll, z_coll, t_coll, 
-                                diff_coef, laser_mode=laser_mode)
+
+        m2_value = None
+        if m2_raw_param is not None:
+            m2_eps = float(getattr(config, "M2_EPS", 1e-6))
+            m2_value = F.softplus(m2_raw_param) + m2_eps
+
+        # Линейный рост веса crater-loss: 0.0 на 1-й эпохе -> 1.0 на последней
+        if num_epochs <= 1:
+            crater_ramp = 1.0
+        else:
+            crater_ramp = float(epoch - 1) / float(num_epochs - 1)
+        crater_weight = float(getattr(config, "CRATER_LOSS_WEIGHT", 1.0)) * crater_ramp
+
+        loss = compute_pinn_loss(
+            model, x_coll, y_coll, z_coll, t_coll,
+            diff_coef_param,
+            laser_mode=laser_mode,
+            m2_factor=m2_value,
+            inverse_enabled=inverse_enabled,
+            crater_loss_weight=crater_weight,
+            crater_target_temp=getattr(config, "CRATER_TARGET_TEMP", 1900.0),
+            crater_depth_threshold=getattr(config, "CRATER_DEPTH_THRESHOLD", 0.01),
+        )
         loss.backward()
         optimizer.step()
         loss_val = loss.item()
@@ -231,8 +374,14 @@ def train_pinn(model, diff_coef, num_epochs=200, lr=1e-3, device='cpu', laser_mo
         
         if progress_callback:
             progress_callback(epoch, loss_val)
-            
-        if progress_callback is None and epoch % 100 == 0:
-            print(f"Epoch {epoch}/{num_epochs}, Loss={loss:.3e}, Mode={laser_mode}")
+
+        if log_every and epoch % int(log_every) == 0:
+            extras = []
+            if isinstance(diff_coef_param, nn.Parameter):
+                extras.append(f"coef_tensor={float(diff_coef_param.detach().cpu().item()):.6g}")
+            if m2_value is not None:
+                extras.append(f"M2={float(m2_value.detach().cpu().item()):.6g}")
+            extra_txt = (", " + ", ".join(extras)) if extras else ""
+            print(f"Epoch {epoch}/{num_epochs}, Loss={loss:.3e}{extra_txt}, Mode={laser_mode}")
             
     return history
