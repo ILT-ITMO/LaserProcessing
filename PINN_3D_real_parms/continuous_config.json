@@ -10,9 +10,8 @@
     "continuous_power": 10.0,
     "num_pulses": 1,
     "simulation_time": 0.666665e-3,
-    "M2": 2.5
+    "M2": 1.2
   },
-  
   "material": {
     "density": 2200.0,
     "specific_heat": 670.0,
@@ -21,53 +20,39 @@
     "reflectivity": 0.25,
     "initial_temperature": 300.0
   },
-  
   "pinn": {
     "num_gaussians": 1,
     "gaussian_spacing": 0.5,
     "sigma0": 0.1,
     "laser_amplitude": 1.0,
-    "collocation_points": {
-      "x": 20,
-      "y": 20,
-      "z": 20,
-      "t": 20
-    },
-    "visualization_points": {
-      "x": 30,
-      "y": 30,
-      "z": 30,
-      "t": 20
-    }
+    "collocation_points": {"x": 20, "y": 20, "z": 20, "t": 20},
+    "visualization_points": {"x": 30, "y": 30, "z": 30, "t": 20}
   },
-  
   "crater": {
     "peak_depth_um": 30.0,
     "width_99_um": 145.0
   },
-  
   "training": {
     "num_epochs": 1000,
-    "learning_rate": 1e-3,
+    "learning_rate": 0.001,
     "device": "auto",
-    "loss_weights": {
-      "pde": 1.0,
-      "ic": 1.0,
-      "bc": 2.0
-    },
-    "log_every": 100,
-    "inverse_mode": "coef",
+    "loss_weights": {"pde": 1.0, "ic": 1.0, "bc": 2.0},
+    "log_every": 50,
+    "inverse_mode": "m2",
     "pretrained_checkpoint_path": null,
     "pretrained_strict": true
   },
-
   "inverse": {
     "enabled": true,
     "initial_diff_coef": 1.0,
-    "initial_m2": null,
+    "initial_m2": 1.2,
     "m2_eps": 1e-6,
-    "crater_loss_weight": 1.0,
+    "crater_loss_weight": 0.3,
     "target_temperature": 1900.0,
-    "crater_depth_threshold": 0.01
+    "crater_depth_threshold": 0.01,
+    "m2_loss_weight": 2.0,
+    "target_width_um": 145.0,
+    "m2_lr_multiplier": 5.0,
+    "coef_lr_multiplier": 3.0
   }
 }

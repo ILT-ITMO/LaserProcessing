@@ -10,12 +10,9 @@ class PINN(nn.Module):
     """
     Physics-Informed Neural Network (PINN) class for solving partial differential equations.
     
-        Attributes:
-            network: The neural network used to approximate the solution.
-            layers_sizes: The sizes of the layers in the neural network.
-    
-        Class Methods:
-        - __init__:
+    Attributes:
+        network: The neural network used to approximate the solution.
+        layers_sizes: The sizes of the layers in the neural network.
     """
 
     def __init__(self, layers_sizes):
@@ -24,16 +21,6 @@ class PINN(nn.Module):
         
         Args:
             layers_sizes (list[int]): A list of integers representing the size of each layer in the network.
-        
-        Initializes the following class fields:
-            network (nn.Sequential): The sequential neural network module, constructed from the provided layer sizes.
-                     It consists of linear layers and Tanh activations.
-        
-        Returns:
-            None
-        
-        The network is initialized to learn complex relationships within data, enabling the model to approximate functions 
-        and ultimately solve the underlying physical problems related to laser processing.
         """
         super().__init__()
         layers = []
@@ -46,8 +33,6 @@ class PINN(nn.Module):
     def forward(self, x_tensor, y_tensor, z_tensor, t_tensor):
         """
         Passes input tensors through the network to obtain a prediction.
-        
-        Combines the input tensors into a single tensor and uses it as input for the neural network. This allows the network to consider all input variables simultaneously when making a prediction.
         
         Args:
             x_tensor (torch.Tensor): The first input tensor representing one of the input variables.
@@ -73,32 +58,22 @@ def _load_pretrained_into_model(model: nn.Module, checkpoint_path: str, device: 
     return checkpoint
 
 
-
 def compute_pinn_loss(model, x_coll, y_coll, z_coll, t_coll, 
-                      diff_coef_param,  # теперь тензор, а не float
+                      diff_coef_param,
                       laser_mode=None,
                       m2_factor=None,
                       inverse_enabled=True,
                       crater_loss_weight=1.0,
                       crater_target_temp=1900.0,
                       crater_depth_threshold=0.01,
+                      m2_loss_weight=0.0,
+                      target_width_um=145.0,
                       return_components: bool = False):    
     """
     Computes the loss for a Physics-Informed Neural Network (PINN) model simulating laser-induced heat transfer.
     
-    The loss function incorporates terms for the partial differential equation (PDE) representing heat conduction, initial conditions, and boundary conditions. It calculates gradients of the model's output with respect to space and time to enforce the PDE.  The loss is minimized during training to find a model that accurately represents the temperature distribution within the material.
-    
-    Args:
-        model: The PINN model being trained.
-        x_coll: Tensor of x-coordinates for collocation points.
-        y_coll: Tensor of y-coordinates for collocation points.
-        z_coll: Tensor of z-coordinates for collocation points.
-        t_coll: Tensor of time values for collocation points.
-        diff_coef: Diffusion coefficient for the heat equation.
-        laser_mode:  Specifies the laser operation mode ("pulsed" or "continuous"). If None, the mode is taken from the configuration.
-    
-    Returns:
-        The computed loss value (a scalar tensor).
+    The loss function incorporates terms for the partial differential equation (PDE) representing heat conduction,
+    initial conditions, boundary conditions, crater geometry, and M² optimization.
     """
     # Важно: не использовать torch.tensor(tensor), иначе граф будет оборван.
     if torch.is_tensor(diff_coef_param):
@@ -127,7 +102,7 @@ def compute_pinn_loss(model, x_coll, y_coll, z_coll, t_coll,
     u_z = torch.autograd.grad(u, z_coll, grad_outputs=torch.ones_like(u), create_graph=True)[0]
     u_zz = torch.autograd.grad(u_z, z_coll, grad_outputs=torch.ones_like(u_z), create_graph=True)[0]    
     
-    # Источник тепла с учетом режима лазера
+    # Источник тепла с учетом режима лазера и M²
     source_term = laser_source_term(
         x_coll, y_coll, z_coll, t_coll,
         laser_mode=laser_mode,
@@ -194,16 +169,27 @@ def compute_pinn_loss(model, x_coll, y_coll, z_coll, t_coll,
     
     loss_bc += torch.mean(u_bottom_z_deriv ** 2) + torch.mean(u_top_z_deriv ** 2)  # ∂u/∂z = 0
 
+    # CRATER LOSS
     loss_crater = torch.tensor(0.0, device=x_coll.device)
-    if inverse_enabled:
+    if inverse_enabled and crater_loss_weight > 0:
         from conditions import compute_crater_loss
-        # Для loss кратера используем те же точки коллокации (или отдельную сетку)
         loss_crater = compute_crater_loss(
             model, x_coll, y_coll, z_coll, t_coll,
             target_temp=crater_target_temp,
             depth_threshold=crater_depth_threshold
         )
 
+    # M² LOSS - явная оптимизация M² через ширину изотермы
+    loss_m2 = torch.tensor(0.0, device=x_coll.device)
+    if inverse_enabled and m2_factor is not None and m2_loss_weight > 0:
+        from conditions import compute_m2_loss
+        loss_m2 = compute_m2_loss(
+            model, x_coll, y_coll, z_coll, t_coll,
+            m2_factor=m2_factor,
+            target_temp=crater_target_temp,
+            target_width_um=target_width_um,
+            beam_radius_um=config.LASER_BEAM_RADIUS * 1e6
+        )
 
     w_pde, w_ic, w_bc = 1.0, 1.0, 2.0
 
@@ -212,6 +198,7 @@ def compute_pinn_loss(model, x_coll, y_coll, z_coll, t_coll,
         + w_ic * loss_ic
         + w_bc * loss_bc
         + crater_loss_weight * loss_crater
+        + m2_loss_weight * loss_m2
     )
 
     if return_components:
@@ -220,11 +207,11 @@ def compute_pinn_loss(model, x_coll, y_coll, z_coll, t_coll,
             "loss_ic": loss_ic.detach(),
             "loss_bc": loss_bc.detach() if torch.is_tensor(loss_bc) else torch.tensor(loss_bc, device=x_coll.device),
             "loss_crater": loss_crater.detach(),
+            "loss_m2": loss_m2.detach(),
             "coef_tensor": coef_tensor.detach(),
         }
 
     return total_loss
-
 
 
 def train_pinn(
@@ -241,16 +228,15 @@ def train_pinn(
     pretrained_checkpoint_path: str | None = None,
     pretrained_strict: bool = True,
     log_every: int | None = None,
+    m2_loss_weight: float = 0.0,
+    target_width_um: float = 145.0,
 ):
     """
     Trains a Physics-Informed Neural Network (PINN) to model laser-induced heat transfer.
     
     This method performs the training of the PINN model using an optimization process 
     to minimize the discrepancy between the model's predictions and the underlying 
-    physical equations governing heat transfer. It iterates through a specified 
-    number of epochs, calculating the loss and updating the model's parameters 
-    accordingly. The training process considers the chosen laser mode to accurately 
-    simulate the heat distribution.
+    physical equations governing heat transfer.
     
     Args:
         model: The PINN model to be trained.
@@ -258,10 +244,10 @@ def train_pinn(
         num_epochs (int, optional): The number of training epochs. Defaults to 200.
         lr (float, optional): The learning rate for the optimizer. Defaults to 1e-3.
         device (str, optional): The device to use for training ('cpu' or 'cuda'). Defaults to 'cpu'.
-        laser_mode (str, optional): The laser mode ("pulsed" or "continuous"). 
-                                     If None, the mode is taken from the configuration. 
-                                     Defaults to None.
+        laser_mode (str, optional): The laser mode ("pulsed" or "continuous").
         progress_callback (callable, optional): function(epoch, loss) called after each epoch.
+        m2_loss_weight (float): Weight for M² loss term.
+        target_width_um (float): Target isotherm width in micrometers.
     
     Returns:
         list: A list containing the loss value for each epoch during training.
@@ -318,7 +304,24 @@ def train_pinn(
         )
         trainable_params.append(m2_raw_param)
 
-    optimizer = optim.Adam(trainable_params, lr=lr)
+    # Создаем оптимизатор с разными learning rates для разных параметров
+    m2_lr_multiplier = getattr(config, "M2_LR_MULTIPLIER", 5.0)
+    coef_lr_multiplier = getattr(config, "COEF_LR_MULTIPLIER", 3.0)
+    
+    if inverse_mode_norm == "m2" and m2_raw_param is not None:
+        optimizer = optim.Adam([
+            {'params': model.parameters(), 'lr': lr},
+            {'params': [m2_raw_param], 'lr': lr * m2_lr_multiplier}
+        ], lr=lr)
+        print(f"  M² optimization: lr_model={lr}, lr_M2={lr * m2_lr_multiplier}")
+    elif inverse_mode_norm == "coef" and isinstance(diff_coef_param, nn.Parameter):
+        optimizer = optim.Adam([
+            {'params': model.parameters(), 'lr': lr},
+            {'params': [diff_coef_param], 'lr': lr * coef_lr_multiplier}
+        ], lr=lr)
+        print(f"  Coef optimization: lr_model={lr}, lr_coef={lr * coef_lr_multiplier}")
+    else:
+        optimizer = optim.Adam(trainable_params, lr=lr)
 
     if laser_mode is None:
         laser_mode = config.LASER_MODE
@@ -337,10 +340,14 @@ def train_pinn(
     t_coll = T.flatten()
 
     history = []
-    # Use tqdm only if no callback is provided to avoid cluttering logs if we are in web mode
     iterator = range(1, num_epochs+1)
     if progress_callback is None:
         iterator = tqdm(iterator)
+
+    # Получаем параметры из конфига
+    crater_loss_weight = float(getattr(config, "CRATER_LOSS_WEIGHT", 1.0))
+    crater_target_temp = float(getattr(config, "CRATER_TARGET_TEMP", 1900.0))
+    crater_depth_threshold = float(getattr(config, "CRATER_DEPTH_THRESHOLD", 0.01))
 
     for epoch in iterator:
         optimizer.zero_grad()
@@ -350,12 +357,15 @@ def train_pinn(
             m2_eps = float(getattr(config, "M2_EPS", 1e-6))
             m2_value = F.softplus(m2_raw_param) + m2_eps
 
-        # Линейный рост веса crater-loss: 0.0 на 1-й эпохе -> 1.0 на последней
+        # Линейный рост веса ТОЛЬКО для crater-loss (для M² вес постоянный)
         if num_epochs <= 1:
             crater_ramp = 1.0
         else:
             crater_ramp = float(epoch - 1) / float(num_epochs - 1)
-        crater_weight = float(getattr(config, "CRATER_LOSS_WEIGHT", 1.0)) * crater_ramp
+        
+        current_crater_weight = crater_loss_weight * crater_ramp
+        # M² вес - постоянный, без линейного нарастания
+        current_m2_weight = m2_loss_weight
 
         loss = compute_pinn_loss(
             model, x_coll, y_coll, z_coll, t_coll,
@@ -363,9 +373,11 @@ def train_pinn(
             laser_mode=laser_mode,
             m2_factor=m2_value,
             inverse_enabled=inverse_enabled,
-            crater_loss_weight=crater_weight,
-            crater_target_temp=getattr(config, "CRATER_TARGET_TEMP", 1900.0),
-            crater_depth_threshold=getattr(config, "CRATER_DEPTH_THRESHOLD", 0.01),
+            crater_loss_weight=current_crater_weight,
+            crater_target_temp=crater_target_temp,
+            crater_depth_threshold=crater_depth_threshold,
+            m2_loss_weight=current_m2_weight,
+            target_width_um=target_width_um,
         )
         loss.backward()
         optimizer.step()
@@ -378,9 +390,15 @@ def train_pinn(
         if log_every and epoch % int(log_every) == 0:
             extras = []
             if isinstance(diff_coef_param, nn.Parameter):
-                extras.append(f"coef_tensor={float(diff_coef_param.detach().cpu().item()):.6g}")
+                extras.append(f"coef={float(diff_coef_param.detach().cpu().item()):.6g}")
             if m2_value is not None:
                 extras.append(f"M2={float(m2_value.detach().cpu().item()):.6g}")
+                extras.append(f"w_m2={current_m2_weight:.3f}")
+                # Показываем градиент M² если есть
+                if m2_raw_param is not None and m2_raw_param.grad is not None:
+                    grad_norm = m2_raw_param.grad.norm().item()
+                    extras.append(f"grad_M2={grad_norm:.6g}")
+            extras.append(f"w_crater={current_crater_weight:.3f}")
             extra_txt = (", " + ", ".join(extras)) if extras else ""
             print(f"Epoch {epoch}/{num_epochs}, Loss={loss:.3e}{extra_txt}, Mode={laser_mode}")
             

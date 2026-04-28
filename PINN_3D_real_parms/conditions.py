@@ -281,3 +281,59 @@ def get_laser_parameters_for_mode(laser_mode=None):
             "peak_power": config.LASER_PEAK_POWER,
             "description": f"Импульсный режим: {config.NUM_PULSES} импульсов"
         }
+
+def compute_m2_loss(model, x_norm, y_norm, z_norm, t_norm, m2_factor,
+                    target_temp=1900.0, target_width_um=145.0, beam_radius_um=None):
+    """
+    Вычисляет лосс, который заставляет M² увеличиваться,
+    если ширина изотермы меньше целевой, и уменьшаться, если больше.
+    """
+    # Физические координаты (мкм)
+    x_phys = x_norm * config.CHARACTERISTIC_LENGTH * 1e6
+    y_phys = y_norm * config.CHARACTERISTIC_LENGTH * 1e6
+    
+    if beam_radius_um is None:
+        beam_radius_um = config.LASER_BEAM_RADIUS * 1e6
+    
+    # Предсказанная температура на поверхности (z=0) в центре пучка (y≈0)
+    z_surface = torch.zeros_like(x_norm)
+    u_norm = model(x_norm, y_norm, z_surface, t_norm).squeeze()
+    T_pred = config.INITIAL_TEMPERATURE + u_norm * config.CHARACTERISTIC_TEMPERATURE
+    
+    # Выбираем точки с |y| < 5% от диапазона (центр по Y)
+    y_tol = 0.05 * (y_phys.max() - y_phys.min())
+    mask_center = torch.abs(y_phys) < y_tol
+    if not mask_center.any():
+        return torch.tensor(0.0, device=x_norm.device, dtype=x_norm.dtype)
+    
+    x_center = x_phys[mask_center]
+    T_center = T_pred[mask_center]
+    
+    # Сортируем по x
+    sort_idx = torch.argsort(x_center)
+    x_sorted = x_center[sort_idx]
+    T_sorted = T_center[sort_idx]
+    
+    # Точки, где температура >= target_temp
+    above = T_sorted >= target_temp
+    if not above.any():
+        # Изотерма не достигнута → нужно повышать температуру (штрафуем, но не трогаем M² напрямую)
+        # Даём умеренный штраф, чтобы не мешать crater_loss
+        return torch.tensor(0.1, device=x_norm.device, dtype=x_norm.dtype)
+    
+    # Ширина изотермы
+    idx = torch.where(above)[0]
+    width = x_sorted[idx].max() - x_sorted[idx].min()
+    
+    # Относительная ошибка ширины (цель = target_width_um)
+    width_error = (width - target_width_um) / target_width_um
+    width_loss = width_error ** 2
+    
+    # Регуляризация: M² не должен быть меньше 1.0 и не больше 5.0
+    m2_low = torch.relu(1.0 - m2_factor) ** 2
+    m2_high = torch.relu(m2_factor - 5.0) ** 2
+    
+    # Итоговый лосс
+    loss_m2 = width_loss + 0.1 * m2_low + 0.1 * m2_high
+    
+    return loss_m2
