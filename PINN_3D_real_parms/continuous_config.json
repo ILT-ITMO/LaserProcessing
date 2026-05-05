@@ -10,7 +10,7 @@
     "continuous_power": 10.0,
     "num_pulses": 1,
     "simulation_time": 0.666665e-3,
-    "M2": 1.2
+    "M2": 2.5
   },
   "material": {
     "density": 2200.0,

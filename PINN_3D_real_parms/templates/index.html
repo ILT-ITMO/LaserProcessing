@@ -63,6 +63,10 @@
                     class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-600">Model</button>
                 <button onclick="showTab('training')" id="tab-btn-training"
                     class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-600">Training</button>
+                <button onclick="showTab('crater')" id="tab-btn-crater"
+                    class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-600">Crater</button>
+                <button onclick="showTab('inverse')" id="tab-btn-inverse"
+                    class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-600">Inverse</button>
                 <button onclick="showTab('archive')" id="tab-btn-archive"
                     class="flex-1 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:text-slate-600">Archive</button>
             </div>
@@ -77,6 +81,18 @@
                             <option value="pulsed">Pulsed Irradiation</option>
                             <option value="continuous">Continuous Wave</option>
                         </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Wavelength (m)</label>
+                            <input type="text" id="laser-wavelength"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">M²</label>
+                            <input type="number" id="laser-M2" step="0.01" min="0"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
@@ -105,6 +121,23 @@
                     <div>
                         <label class="block text-xs font-medium text-slate-600 mb-1">Scan Velocity (m/s)</label>
                         <input type="number" id="laser-scan_velocity" step="0.01"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Continuous Power (W)</label>
+                            <input type="number" id="laser-continuous_power" step="0.1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Num Pulses</label>
+                            <input type="number" id="laser-num_pulses" step="1" min="1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Simulation Time (s, null=auto)</label>
+                        <input type="text" id="laser-simulation_time"
                             class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
                     </div>
                 </div>
@@ -140,6 +173,11 @@
                                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
                         </div>
                     </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Initial Temperature (K)</label>
+                        <input type="number" id="material-initial_temperature" step="1"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                    </div>
                 </div>
 
                 <!-- PINN Tab -->
@@ -156,6 +194,18 @@
                                 class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
                         </div>
                     </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Gaussian Spacing</label>
+                            <input type="number" id="pinn-gaussian_spacing" step="0.01"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Sigma0</label>
+                            <input type="number" id="pinn-sigma0" step="0.001"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
                     <div>
                         <label class="block text-xs font-medium text-slate-600 mb-1">Collocation (x,y,z,t)</label>
                         <div class="grid grid-cols-4 gap-2">
@@ -166,6 +216,19 @@
                             <input type="number" id="pinn-collocation_points-z"
                                 class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
                             <input type="number" id="pinn-collocation_points-t"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Visualization (x,y,z,t)</label>
+                        <div class="grid grid-cols-4 gap-2">
+                            <input type="number" id="pinn-visualization_points-x"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                            <input type="number" id="pinn-visualization_points-y"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                            <input type="number" id="pinn-visualization_points-z"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                            <input type="number" id="pinn-visualization_points-t"
                                 class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
                         </div>
                     </div>
@@ -193,6 +256,134 @@
                             <option value="cuda">NVIDIA CUDA</option>
                             <option value="mps">Apple Metal (MPS)</option>
                         </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Log Every (epochs)</label>
+                        <input type="number" id="training-log_every" step="1" min="1"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Inverse Mode</label>
+                        <select id="training-inverse_mode"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="classic">classic</option>
+                            <option value="coef">coef</option>
+                            <option value="m2">m2</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Pretrained Checkpoint</label>
+                            <input type="text" id="training-pretrained_checkpoint_path" placeholder="null or path"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Pretrained Strict</label>
+                            <select id="training-pretrained_strict"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="true">true</option>
+                                <option value="false">false</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Loss Weights (pde, ic, bc)</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <input type="number" id="training-loss_weights-pde" step="0.01"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                            <input type="number" id="training-loss_weights-ic" step="0.01"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                            <input type="number" id="training-loss_weights-bc" step="0.01"
+                                class="bg-slate-50 border border-slate-200 rounded-lg p-1 text-center text-xs">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Crater Tab -->
+                <div id="tab-crater" class="tab-content hidden space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Peak Depth (µm)</label>
+                            <input type="number" id="crater-peak_depth_um" step="0.1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Width 99% (µm)</label>
+                            <input type="number" id="crater-width_99_um" step="0.1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Inverse Tab -->
+                <div id="tab-inverse" class="tab-content hidden space-y-4">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Enable Inverse</label>
+                        <select id="inverse-enabled"
+                            class="bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="true">true</option>
+                            <option value="false">false</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Initial Diff Coef</label>
+                            <input type="number" id="inverse-initial_diff_coef" step="0.0001"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Initial M² (null=laser.M2)</label>
+                            <input type="text" id="inverse-initial_m2"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">M² eps</label>
+                            <input type="number" id="inverse-m2_eps" step="1e-8"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Crater Loss Weight</label>
+                            <input type="number" id="inverse-crater_loss_weight" step="0.01"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Target Temperature (K)</label>
+                            <input type="number" id="inverse-target_temperature" step="1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Depth Threshold (µm)</label>
+                            <input type="number" id="inverse-crater_depth_threshold" step="0.001"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">M² Loss Weight</label>
+                            <input type="number" id="inverse-m2_loss_weight" step="0.01"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Target Width (µm)</label>
+                            <input type="number" id="inverse-target_width_um" step="0.1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">M² LR Multiplier</label>
+                            <input type="number" id="inverse-m2_lr_multiplier" step="0.1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Coef LR Multiplier</label>
+                            <input type="number" id="inverse-coef_lr_multiplier" step="0.1"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm outline-none focus:border-blue-500">
+                        </div>
                     </div>
                 </div>
 
@@ -251,7 +442,7 @@
                 </div>
 
                 <!-- Metrics Grid -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-6 gap-6">
                     <div
                         class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-md transition-shadow group flex flex-col justify-center min-h-[160px]">
                         <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Current Loss</p>
@@ -268,9 +459,22 @@
                         <div id="metric-target" class="text-4xl font-black text-slate-800 tabular-nums">0</div>
                     </div>
                     <div
+                        class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-md transition-shadow group flex flex-col justify-center min-h-[160px]">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">MAE (K)</p>
+                        <div id="metric-mae" class="text-4xl font-black text-slate-800 tabular-nums">-</div>
+                    </div>
+                    <div
+                        class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-md transition-shadow group flex flex-col justify-center min-h-[160px]">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">MSE (K²)</p>
+                        <div id="metric-mse" class="text-4xl font-black text-slate-800 tabular-nums">-</div>
+                    </div>
+                    <div
                         class="bg-blue-600 p-8 rounded-[2.5rem] shadow-xl shadow-blue-100 group transform hover:-translate-y-1 transition-transform flex flex-col justify-center min-h-[160px]">
-                        <p class="text-xs font-bold text-blue-200 uppercase tracking-widest mb-3">Architecture</p>
-                        <div class="text-2xl font-black text-white">[4, 128, 128, 1]</div>
+                        <p class="text-xs font-bold text-blue-200 uppercase tracking-widest mb-3">Learned Params</p>
+                        <div class="text-sm font-bold text-white space-y-1">
+                            <div>M²: <span id="metric-learned-m2" class="tabular-nums">-</span></div>
+                            <div>Coef: <span id="metric-learned-coef" class="tabular-nums">-</span></div>
+                        </div>
                     </div>
                 </div>
 
@@ -364,6 +568,7 @@
 
     <script>
         let chart;
+        let paramChart;
         let masterConfig = {};
 
         // Tab Management
@@ -436,6 +641,70 @@
             }
         });
 
+        // Init Param Chart (inverse coef / m2)
+        const pctx = document.createElement('canvas');
+        pctx.id = 'paramChartPolished';
+        const chartContainer = document.querySelector('#lossChartPolished').parentElement;
+        // Insert a new chart block below the loss chart
+        const paramBlock = document.createElement('div');
+        paramBlock.className = 'bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 h-full flex flex-col mt-8';
+        paramBlock.innerHTML = `
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="param-chart-title" class="text-xl font-bold text-slate-800">Inverse Parameter</h3>
+                <div class="bg-slate-50 py-1 px-3 rounded-full text-xs font-semibold text-slate-500">
+                    Every 50 epochs</div>
+            </div>
+            <div class="relative h-[260px]">
+                <canvas id="paramChartPolished"></canvas>
+            </div>
+        `;
+        chartContainer.parentElement.appendChild(paramBlock);
+
+        const pctx2 = document.getElementById('paramChartPolished').getContext('2d');
+        paramChart = new Chart(pctx2, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'param',
+                    data: [],
+                    borderColor: '#16a34a',
+                    borderWidth: 3,
+                    fill: false,
+                    tension: 0.25,
+                    pointRadius: 2,
+                    pointHoverRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        grid: { color: '#f8fafc', drawTicks: false },
+                        border: { display: false },
+                        ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8' }
+                    },
+                    x: {
+                        grid: { display: false },
+                        border: { display: false },
+                        ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 12,
+                        titleFont: { size: 12, weight: '600' },
+                        bodyFont: { size: 14, weight: 'bold' },
+                        cornerRadius: 8,
+                        displayColors: false
+                    }
+                }
+            }
+        });
+
         async function loadConfig() {
             const res = await fetch('/config');
             masterConfig = await res.json();
@@ -462,6 +731,20 @@
 
         async function updateConfig() {
             // Collect all inputs
+            const parseVal = (raw, oldVal) => {
+                if (raw === null || raw === undefined) return raw;
+                const s = String(raw).trim();
+                // Empty input: keep previous value (prevents "" -> config type errors)
+                if (s === '') return oldVal;
+                if (s.toLowerCase() === 'null') return null;
+                if (s.toLowerCase() === 'true') return true;
+                if (s.toLowerCase() === 'false') return false;
+                // numbers (support scientific notation)
+                const n = Number(s);
+                if (!Number.isNaN(n) && Number.isFinite(n)) return n;
+                return raw;
+            };
+
             const updateObj = (obj, prefix = '') => {
                 const newObj = Array.isArray(obj) ? [] : {};
                 for (let key in obj) {
@@ -471,8 +754,7 @@
                     } else {
                         const el = document.getElementById(fullKey);
                         if (el) {
-                            const val = el.value;
-                            newObj[key] = isNaN(val) || val === '' ? val : (val.includes('.') ? parseFloat(val) : parseInt(val));
+                            newObj[key] = parseVal(el.value, obj[key]);
                         } else {
                             newObj[key] = obj[key];
                         }
@@ -522,6 +804,12 @@
             chart.data.labels = [];
             chart.data.datasets[0].data = [];
             chart.update();
+            if (paramChart) {
+                paramChart.data.labels = [];
+                paramChart.data.datasets[0].data = [];
+                paramChart.update();
+                document.getElementById('param-chart-title').innerText = "Inverse Parameter";
+            }
             document.getElementById('result-gif').classList.add('hidden');
             document.getElementById('result-placeholder').classList.remove('hidden');
             document.getElementById('hover-overlay').classList.add('hidden');
@@ -536,6 +824,14 @@
                 document.getElementById('metric-loss').innerText = data.loss ? data.loss.toExponential(4) : '-';
                 document.getElementById('metric-epoch').innerText = data.epoch;
                 document.getElementById('state-detail').innerText = data.message;
+                if (data.metrics) {
+                    document.getElementById('metric-mae').innerText = (data.metrics.mae !== undefined && data.metrics.mae !== null) ? Number(data.metrics.mae).toExponential(3) : '-';
+                    document.getElementById('metric-mse').innerText = (data.metrics.mse !== undefined && data.metrics.mse !== null) ? Number(data.metrics.mse).toExponential(3) : '-';
+                }
+                if (data.learned) {
+                    document.getElementById('metric-learned-m2').innerText = (data.learned.learned_m2 !== undefined && data.learned.learned_m2 !== null) ? Number(data.learned.learned_m2).toFixed(4) : '-';
+                    document.getElementById('metric-learned-coef').innerText = (data.learned.learned_coef !== undefined && data.learned.learned_coef !== null) ? Number(data.learned.learned_coef).toExponential(3) : '-';
+                }
 
                 // Progress
                 if (data.total_epochs > 0) {
@@ -552,6 +848,23 @@
                         chart.data.datasets[0].data.push(data.history[i]);
                     }
                     chart.update('none');
+                }
+
+                // Param chart (streamed every 50 epochs)
+                if (paramChart && Array.isArray(data.param_history)) {
+                    const title = document.getElementById('param-chart-title');
+                    if (data.param_name === 'm2') title.innerText = "M² vs Epoch";
+                    else if (data.param_name === 'coef') title.innerText = "Coef vs Epoch";
+
+                    if (data.param_history.length > paramChart.data.labels.length) {
+                        const startP = paramChart.data.labels.length;
+                        for (let i = startP; i < data.param_history.length; i++) {
+                            const pt = data.param_history[i];
+                            paramChart.data.labels.push(pt.epoch);
+                            paramChart.data.datasets[0].data.push(pt.value);
+                        }
+                        paramChart.update('none');
+                    }
                 }
 
                 if (!data.is_running) {
@@ -619,6 +932,15 @@
                 document.getElementById('metric-loss').innerText = data.summary.final_loss ? data.summary.final_loss.toExponential(4) : '-';
                 document.getElementById('metric-epoch').innerText = data.summary.epochs;
                 document.getElementById('metric-target').innerText = data.summary.epochs;
+            }
+            if (data.metrics) {
+                document.getElementById('metric-mae').innerText = (data.metrics.mae !== undefined && data.metrics.mae !== null) ? Number(data.metrics.mae).toExponential(3) : '-';
+                document.getElementById('metric-mse').innerText = (data.metrics.mse !== undefined && data.metrics.mse !== null) ? Number(data.metrics.mse).toExponential(3) : '-';
+            }
+            if (data.summary && data.summary.learned) {
+                const learned = data.summary.learned;
+                document.getElementById('metric-learned-m2').innerText = (learned.learned_m2 !== undefined && learned.learned_m2 !== null) ? Number(learned.learned_m2).toFixed(4) : '-';
+                document.getElementById('metric-learned-coef').innerText = (learned.learned_coef !== undefined && learned.learned_coef !== null) ? Number(learned.learned_coef).toExponential(3) : '-';
             }
 
             // Update parameters sidebar from archived config

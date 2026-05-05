@@ -230,6 +230,8 @@ def train_pinn(
     log_every: int | None = None,
     m2_loss_weight: float = 0.0,
     target_width_um: float = 145.0,
+    return_info: bool = False,
+    progress_param_every: int = 50,
 ):
     """
     Trains a Physics-Informed Neural Network (PINN) to model laser-induced heat transfer.
@@ -250,7 +252,9 @@ def train_pinn(
         target_width_um (float): Target isotherm width in micrometers.
     
     Returns:
-        list: A list containing the loss value for each epoch during training.
+        list | tuple[list, dict]: By default returns loss history list. If return_info=True,
+        returns (loss_history, info_dict) where info_dict contains learned parameters and
+        final loss components.
     """
     model.to(device)
 
@@ -385,7 +389,27 @@ def train_pinn(
         history.append(loss_val)
         
         if progress_callback:
-            progress_callback(epoch, loss_val)
+            # Optional streaming extras (e.g. inverse parameter every N epochs)
+            extras_payload = None
+            if progress_param_every and int(progress_param_every) > 0 and epoch % int(progress_param_every) == 0:
+                extras_payload = {
+                    "inverse_enabled": bool(inverse_enabled),
+                    "inverse_mode": str(inverse_mode_norm),
+                    "param_name": None,
+                    "param_value": None,
+                }
+                if isinstance(diff_coef_param, nn.Parameter):
+                    extras_payload["param_name"] = "coef"
+                    extras_payload["param_value"] = float(diff_coef_param.detach().cpu().item())
+                elif m2_value is not None:
+                    extras_payload["param_name"] = "m2"
+                    extras_payload["param_value"] = float(m2_value.detach().cpu().item())
+
+            try:
+                progress_callback(epoch, loss_val, extras_payload)
+            except TypeError:
+                # Backwards compatible: older callbacks accept (epoch, loss)
+                progress_callback(epoch, loss_val)
 
         if log_every and epoch % int(log_every) == 0:
             extras = []
@@ -402,4 +426,48 @@ def train_pinn(
             extra_txt = (", " + ", ".join(extras)) if extras else ""
             print(f"Epoch {epoch}/{num_epochs}, Loss={loss:.3e}{extra_txt}, Mode={laser_mode}")
             
-    return history
+    if not return_info:
+        return history
+
+    # Collect info for downstream (e.g. web UI)
+    info: dict = {
+        "inverse_enabled": bool(inverse_enabled),
+        "inverse_mode": str(inverse_mode_norm),
+        "learned_coef": None,
+        "learned_m2": None,
+        "final_loss_components": None,
+    }
+
+    if isinstance(diff_coef_param, nn.Parameter):
+        info["learned_coef"] = float(diff_coef_param.detach().cpu().item())
+
+    if m2_raw_param is not None:
+        m2_eps = float(getattr(config, "M2_EPS", 1e-6))
+        m2_value_final = (F.softplus(m2_raw_param) + m2_eps).detach()
+        info["learned_m2"] = float(m2_value_final.cpu().item())
+
+    # Final loss decomposition
+    try:
+        m2_value_for_loss = None
+        if m2_raw_param is not None:
+            m2_eps = float(getattr(config, "M2_EPS", 1e-6))
+            m2_value_for_loss = F.softplus(m2_raw_param) + m2_eps
+
+        _, comps = compute_pinn_loss(
+            model, x_coll, y_coll, z_coll, t_coll,
+            diff_coef_param,
+            laser_mode=laser_mode,
+            m2_factor=m2_value_for_loss,
+            inverse_enabled=inverse_enabled,
+            crater_loss_weight=float(getattr(config, "CRATER_LOSS_WEIGHT", 1.0)),
+            crater_target_temp=float(getattr(config, "CRATER_TARGET_TEMP", 1900.0)),
+            crater_depth_threshold=float(getattr(config, "CRATER_DEPTH_THRESHOLD", 0.01)),
+            m2_loss_weight=float(m2_loss_weight),
+            target_width_um=float(target_width_um),
+            return_components=True,
+        )
+        info["final_loss_components"] = {k: float(v.cpu().item()) for k, v in comps.items() if k.startswith("loss_")}
+    except Exception:
+        info["final_loss_components"] = None
+
+    return history, info

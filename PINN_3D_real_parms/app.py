@@ -21,6 +21,7 @@ import config
 from pinn import PINN, train_pinn
 from conditions import convert_to_physical_temperature
 from visual import create_animation
+from visual import laser_crater_3d
 
 app = FastAPI(title="PINN Laser Model Interface")
 
@@ -30,6 +31,22 @@ templates = Jinja2Templates(directory="templates")
 # Ensure directories exist
 os.makedirs("results/runs", exist_ok=True)
 os.makedirs("static", exist_ok=True)
+
+# Web defaults: load continuous preset on startup
+def _load_web_default_config():
+    preset_path = os.path.join(os.path.dirname(__file__), "continuous_config.json")
+    if not os.path.exists(preset_path):
+        return
+    try:
+        with open(preset_path, "r", encoding="utf-8") as f:
+            preset = json.load(f)
+        if isinstance(preset, dict):
+            config.CONFIG.config = config.CONFIG.deep_update(config.CONFIG.config, preset)
+            config.CONFIG.calculate_derived_parameters()
+    except Exception as e:
+        print(f"[WARN] Failed to load web default config from {preset_path}: {e}")
+
+_load_web_default_config()
 
 # Mount static for general results
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -46,6 +63,11 @@ class TrainingState:
     message = "Idle"
     run_id = ""
     mode = ""
+    metrics: Dict[str, Any] = {}
+    learned: Dict[str, Any] = {}
+    param_name: str = ""
+    param_current: Optional[float] = None
+    param_history: List[Dict[str, Any]] = []
     
 state = TrainingState()
 
@@ -55,6 +77,8 @@ class LaserConfigModel(BaseModel):
     material: Dict[str, Any]
     pinn: Dict[str, Any]
     training: Dict[str, Any]
+    crater: Optional[Dict[str, Any]] = None
+    inverse: Optional[Dict[str, Any]] = None
 
 def background_train(cfg_dict, run_id):
     """Background training task"""
@@ -65,6 +89,11 @@ def background_train(cfg_dict, run_id):
     state.message = "Initializing..."
     state.run_id = run_id
     state.mode = cfg_dict["laser"]["mode"]
+    state.metrics = {}
+    state.learned = {}
+    state.param_name = ""
+    state.param_current = None
+    state.param_history = []
     
     run_dir = f"results/runs/{run_id}"
     os.makedirs(run_dir, exist_ok=True)
@@ -96,24 +125,48 @@ def background_train(cfg_dict, run_id):
         state.total_epochs = num_epochs
         
         # Callback
-        def progress_cb(epoch, loss):
+        def progress_cb(epoch, loss, extras=None):
             if state.stop_requested:
                 raise InterruptedError("Training stopped by user")
             state.current_epoch = epoch
             state.current_loss = loss
             state.history.append(loss)
+            if extras and isinstance(extras, dict):
+                param_name = extras.get("param_name")
+                param_value = extras.get("param_value")
+                if param_name in {"m2", "coef"} and isinstance(param_value, (int, float)):
+                    state.param_name = str(param_name)
+                    state.param_current = float(param_value)
+                    state.param_history.append({"epoch": int(epoch), "value": float(param_value)})
             
         # Train
         try:
-            loss_hist = train_pinn(
+            inverse_cfg = config.CONFIG.config.get("inverse", {}) or {}
+            training_cfg = config.CONFIG.config.get("training", {}) or {}
+
+            m2_loss_weight = float(inverse_cfg.get("m2_loss_weight", getattr(config, "M2_LOSS_WEIGHT", 0.0)))
+            target_width_um = float(inverse_cfg.get("target_width_um", getattr(config, "TARGET_WIDTH_UM", 145.0)))
+
+            train_out = train_pinn(
                 model, 
                 diff_coef, 
                 num_epochs=num_epochs,
                 lr=config.CONFIG.config["training"]["learning_rate"],
                 device=device,
                 laser_mode=state.mode,
-                progress_callback=progress_cb
+                progress_callback=progress_cb,
+                inverse_enabled=bool(inverse_cfg.get("enabled", getattr(config, "INVERSE_ENABLED", False))),
+                inverse_mode=str(training_cfg.get("inverse_mode", getattr(config, "INVERSE_MODE", "classic"))),
+                pretrained_checkpoint_path=training_cfg.get("pretrained_checkpoint_path", None),
+                pretrained_strict=bool(training_cfg.get("pretrained_strict", True)),
+                log_every=training_cfg.get("log_every", getattr(config, "LOG_EVERY", 100)),
+                m2_loss_weight=m2_loss_weight,
+                target_width_um=target_width_um,
+                progress_param_every=50,
+                return_info=True,
             )
+            loss_hist, info = train_out
+            state.learned = info or {}
             state.message = "Finished"
         except InterruptedError:
             state.message = "Stopped by user"
@@ -122,7 +175,8 @@ def background_train(cfg_dict, run_id):
         if state.current_epoch > 0:
             try:
                 state.message = "Generating artifacts..."
-                generate_results_to_folder(model, device, run_dir, state.mode)
+                metrics = generate_results_to_folder(model, device, run_dir, state.mode)
+                state.metrics = metrics or {}
                 if "Stopped" not in state.message:
                     state.message = "Finished"
             except Exception as viz_e:
@@ -136,7 +190,11 @@ def background_train(cfg_dict, run_id):
                     "final_loss": state.current_loss,
                     "mode": state.mode,
                     "timestamp": datetime.now().isoformat(),
-                    "status": state.message
+                    "status": state.message,
+                    "metrics": state.metrics,
+                    "learned": state.learned,
+                    "param_name": state.param_name,
+                    "param_history": state.param_history,
                 }, f)
             
     except Exception as e:
@@ -171,6 +229,52 @@ def generate_results_to_folder(model, device, run_dir, mode):
     gif_path = f'{run_dir}/solution.gif'
     title = f'PINN Solution: {mode} mode'
     create_animation(U_pred_norm, x_plot, y_plot, z_plot, t_plot, title, gif_path)
+
+    # Metrics: MAE/MSE between simulated isotherm line and crater-based line (same as main.py)
+    metrics: Dict[str, Any] = {}
+    try:
+        U_pred_physical = convert_to_physical_temperature(U_pred_norm)
+
+        x_phys = np.array(x_plot) * config.CHARACTERISTIC_LENGTH * 1e6
+        y_phys = np.array(y_plot) * config.CHARACTERISTIC_LENGTH * 1e6
+        z_phys = np.array(z_plot) * config.CHARACTERISTIC_LENGTH * 1e6
+
+        time_idx = -1
+        isotherm_temp = float(getattr(config, "CRATER_TARGET_TEMP", 1900.0))
+        center_y = len(y_phys) // 2
+        surface_z_idx = len(z_phys) - 1
+
+        simulated_line = U_pred_physical[:, center_y, surface_z_idx, time_idx].astype(np.float64)
+
+        crater_field = laser_crater_3d(
+            x_phys, y_phys, z_phys,
+            max_depth_um=float(getattr(config, "CRATER_PEAK_DEPTH_UM", 30.0)),
+            crater_width_um=float(getattr(config, "CRATER_WIDTH_99_UM", 145.0)),
+            max_height_um=float(getattr(config, "CRATER_PEAK_DEPTH_UM", 30.0)),
+            decay_length_um=float(getattr(config, "CRATER_PEAK_DEPTH_UM", 30.0)),
+        )
+        crater_surface = crater_field[:, :, int(np.argmin(np.abs(z_phys - 0.0)))]
+        crater_peak = float(getattr(config, "CRATER_PEAK_DEPTH_UM", 30.0))
+        crater_line = crater_surface[:, center_y].astype(np.float64)
+        experimental_line = (isotherm_temp - crater_peak + crater_line).astype(np.float64)
+
+        n = int(min(simulated_line.shape[0], experimental_line.shape[0]))
+        simulated_line = simulated_line[:n]
+        experimental_line = experimental_line[:n]
+
+        mse = float(np.mean((simulated_line - experimental_line) ** 2))
+        mae = float(np.mean(np.abs(simulated_line - experimental_line)))
+
+        metrics = {
+            "isotherm_temp_K": float(isotherm_temp),
+            "mse": mse,
+            "mae": mae,
+        }
+
+        with open(f"{run_dir}/metrics.json", "w", encoding="utf-8") as f:
+            json.dump(metrics, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[WARN] Metrics computation failed: {e}")
     
     # Save loss plot
     plt.figure(figsize=(8,5))
@@ -184,6 +288,8 @@ def generate_results_to_folder(model, device, run_dir, mode):
     # Save history data for interactive chart later if needed
     np.save(f'{run_dir}/loss_history.npy', np.array(state.history))
 
+    return metrics
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -194,7 +300,21 @@ def get_config():
 
 @app.post("/config")
 def update_config(new_config: LaserConfigModel):
-    config.CONFIG.config = config.CONFIG.deep_update(config.CONFIG.config, new_config.dict())
+    incoming = new_config.dict()
+    # Normalize a few UI-prone fields (strings like "", "null", "1e-3")
+    try:
+        laser = incoming.get("laser", {}) or {}
+        if "simulation_time" in laser and isinstance(laser["simulation_time"], str):
+            s = laser["simulation_time"].strip()
+            if s == "" or s.lower() == "null":
+                laser["simulation_time"] = None
+            else:
+                laser["simulation_time"] = float(s)
+        incoming["laser"] = laser
+    except Exception:
+        pass
+
+    config.CONFIG.config = config.CONFIG.deep_update(config.CONFIG.config, incoming)
     config.CONFIG.calculate_derived_parameters()
     return {"status": "ok", "config": config.CONFIG.config}
 
@@ -231,7 +351,12 @@ def get_status():
         "history": state.history,
         "message": state.message,
         "mode": state.mode,
-        "run_id": state.run_id
+        "run_id": state.run_id,
+        "metrics": state.metrics,
+        "learned": state.learned,
+        "param_name": state.param_name,
+        "param_current": state.param_current,
+        "param_history": state.param_history,
     }
 
 @app.get("/history")
@@ -281,6 +406,11 @@ def get_run_data(run_id: str):
     if os.path.exists(summary_path):
         with open(summary_path, 'r') as f:
             data["summary"] = json.load(f)
+
+    metrics_path = f"{run_dir}/metrics.json"
+    if os.path.exists(metrics_path):
+        with open(metrics_path, "r", encoding="utf-8") as f:
+            data["metrics"] = json.load(f)
             
     config_path = f"{run_dir}/config.json"
     if os.path.exists(config_path):

@@ -88,7 +88,12 @@ class LaserConfig:
                 "m2_eps": 1e-6,                # Эпсилон для стабилизации (M² всегда > 0)
                 "crater_loss_weight": 1.0,     # Вес потери по кратеру
                 "target_temperature": 1900.0,  # Целевая температура для кратера (K)
-                "crater_depth_threshold": 0.01 # Порог глубины кратера для маски (мкм)
+                "crater_depth_threshold": 0.01, # Порог глубины кратера для маски (мкм)
+                # Оптимизация M² (используется при training.inverse_mode="m2")
+                "m2_loss_weight": 0.0,         # Вес loss компоненты по M²
+                "target_width_um": 145.0,      # Целевая ширина изотермы (мкм) для M² loss
+                "m2_lr_multiplier": 5.0,       # Множитель lr для параметра M²
+                "coef_lr_multiplier": 3.0      # Множитель lr для коэффициента диффузии (coef mode)
             }
         }
         
@@ -221,9 +226,22 @@ class LaserConfig:
         self.LASER_SIGMA_NORM = 1.0
         
         # Время моделирования
-        if laser["simulation_time"] is not None:
+        sim_time = laser.get("simulation_time", None)
+        # Принимаем строковые значения из UI/JSON и нормализуем
+        if isinstance(sim_time, str):
+            s = sim_time.strip()
+            if s == "" or s.lower() == "null":
+                sim_time = None
+            else:
+                try:
+                    sim_time = float(s)
+                except Exception:
+                    # Некорректное значение -> считаем что не задано
+                    sim_time = None
+
+        if sim_time is not None:
             # Если время задано явно
-            self.SIMULATION_TIME_PHYSICAL = laser["simulation_time"]
+            self.SIMULATION_TIME_PHYSICAL = sim_time
         else:
             # Автоматический расчет
             if self.LASER_MODE == "pulsed":
@@ -269,6 +287,10 @@ class LaserConfig:
         self.CRATER_LOSS_WEIGHT = inverse.get("crater_loss_weight", 1.0)
         self.CRATER_TARGET_TEMP = inverse.get("target_temperature", 1900.0)
         self.CRATER_DEPTH_THRESHOLD = inverse.get("crater_depth_threshold", 0.01)
+        self.M2_LOSS_WEIGHT = inverse.get("m2_loss_weight", 0.0)
+        self.TARGET_WIDTH_UM = inverse.get("target_width_um", self.CRATER_WIDTH_99_UM)
+        self.M2_LR_MULTIPLIER = inverse.get("m2_lr_multiplier", 5.0)
+        self.COEF_LR_MULTIPLIER = inverse.get("coef_lr_multiplier", 3.0)
 
         training = self.config.get("training", {})
         self.LOG_EVERY = training.get("log_every", 100)
